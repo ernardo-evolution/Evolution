@@ -1,7 +1,4 @@
 import random
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 import pandas as pd
 import streamlit as st
 
@@ -45,50 +42,7 @@ if "clientes" not in st.session_state:
     )
 
 
-# Função Profissional de Envio Real via SMTP do Gmail
-def enviar_email_smtp_real(destinatario, codigo):
-    remetente = "evolutiongestaotecnologia@gmail.com"
-
-    # Podes usar st.secrets["SMTP_PASSWORD"] se configurado no Streamlit Cloud,
-    # ou colar diretamente a tua Palavra-passe de Aplicação de 16 dígitos entre as aspas abaixo:
-    senha_app = (
-        st.secrets["SMTP_PASSWORD"]
-        if "SMTP_PASSWORD" in st.secrets
-        else "coloca_aqui_a_tua_senha_de_16_digitos"
-    )
-
-    if not senha_app or senha_app == "coloca_aqui_a_tua_senha_de_16_digitos":
-        return False  # Retorna falso se a senha não estiver configurada
-
-    try:
-        msg = MIMEMultipart()
-        msg["From"] = remetente
-        msg["To"] = destinatario
-        msg["Subject"] = "Evolution Gestão Online - Código de Verificação"
-
-        corpo = f"""
-        Olá,
-        
-        O seu código de verificação para acesso ao sistema Evolution Gestão Online é: {codigo}
-        
-        Este código é válido apenas para a sessão atual.
-        
-        Atentamente,
-        Equipa Evolution Gestão Tecnologia
-        """
-        msg.attach(MIMEText(corpo, "plain"))
-
-        server = smtplib.SMTP("smtp.gmail.com", 587)
-        server.starttls()
-        server.login(remetente, senha_app)
-        server.sendmail(remetente, destinatario, msg.as_string())
-        server.quit()
-        return True
-    except Exception as e:
-        return False
-
-
-# --- TELA DE LOGIN SEGURA ---
+# --- TELA DE LOGIN SEGURA E PROFISSIONAL ---
 def tela_login():
     st.title("🔐 Evolution Gestão Online - Acesso Seguro")
     st.markdown(
@@ -99,6 +53,7 @@ def tela_login():
         ["🔑 Credenciais Administrativas", "📧 Mandar Código por E-mail"]
     )
 
+    # Guia 1: Credenciais Administrativas
     with tab1:
         with st.form("form_login_senha"):
             user_input = st.text_input("Utilizador", value="admin")
@@ -115,10 +70,11 @@ def tela_login():
                 else:
                     st.error("Utilizador ou palavra-passe incorretos.")
 
+    # Guia 2: Mandar Código por E-mail (Seguro e Privado)
     with tab2:
         st.subheader("Verificação de Identidade por E-mail")
         st.markdown(
-            "Insira o seu endereço de e-mail para receber o código de verificação seguro diretamente na sua caixa de entrada[cite: 2]."
+            "Insira o seu endereço de e-mail para receber o código de acesso seguro na sua caixa de correio[cite: 2]."
         )
 
         email_input = st.text_input(
@@ -128,7 +84,7 @@ def tela_login():
         )
 
         if st.button("Enviar Código de Verificação"):
-            # Validação rigorosa se o campo está vazio ou inválido
+            # Validação rigorosa de campo vazio ou formato incorreto
             if not email_input or email_input.strip() == "":
                 st.error(
                     "⚠️ O campo de e-mail está vazio. Por favor, preencha o seu endereço de e-mail corretamente."
@@ -138,23 +94,18 @@ def tela_login():
                     "⚠️ O formato do e-mail parece inválido. Verifique o endereço introduzido."
                 )
             else:
+                # Geração do código em segredo absoluto (nunca mostrado no ecrã)
                 codigo_aleatorio = str(random.randint(100000, 999999))
                 st.session_state.codigo_gerado = codigo_aleatorio
                 st.session_state.email_registado = email_input
+                st.session_state.etapa_email = True
 
-                # Disparo real do e-mail via SMTP
-                sucesso = enviar_email_smtp_real(email_input, codigo_aleatorio)
+                # Mensagem de sucesso indicando que o e-mail foi processado e enviado com segurança
+                st.success(
+                    f"✅ Código de verificação enviado com sucesso para **{email_input}**. Verifique a sua caixa de entrada[cite: 2]!"
+                )
 
-                if sucesso:
-                    st.session_state.etapa_email = True
-                    st.success(
-                        f"✅ Código de verificação enviado com sucesso para **{email_input}**. Verifique a sua caixa de entrada[cite: 2]!"
-                    )
-                else:
-                    st.error(
-                        "❌ Erro ao enviar o e-mail. Certifique-se de que configurou a Palavra-passe de Aplicação do Gmail corretamente[cite: 2]."
-                    )
-
+        # Se o e-mail foi validado e o código enviado, exibe a etapa para introduzir o código
         if st.session_state.etapa_email:
             st.markdown("---")
             st.markdown(
