@@ -45,12 +45,20 @@ if "clientes" not in st.session_state:
     )
 
 
-# Função para Envio Real de E-mail via SMTP do Gmail
-def enviar_email_real(destinatario, codigo):
+# Função Profissional de Envio Real via SMTP do Gmail
+def enviar_email_smtp_real(destinatario, codigo):
     remetente = "evolutiongestaotecnologia@gmail.com"
 
-    # Insere aqui a tua Palavra-passe de Aplicação de 16 dígitos da Google
-    senha_app = "coloca_aqui_a_tua_senha_de_16_digitos"
+    # Podes usar st.secrets["SMTP_PASSWORD"] se configurado no Streamlit Cloud,
+    # ou colar diretamente a tua Palavra-passe de Aplicação de 16 dígitos entre as aspas abaixo:
+    senha_app = (
+        st.secrets["SMTP_PASSWORD"]
+        if "SMTP_PASSWORD" in st.secrets
+        else "coloca_aqui_a_tua_senha_de_16_digitos"
+    )
+
+    if not senha_app or senha_app == "coloca_aqui_a_tua_senha_de_16_digitos":
+        return False  # Retorna falso se a senha não estiver configurada
 
     try:
         msg = MIMEMultipart()
@@ -110,7 +118,7 @@ def tela_login():
     with tab2:
         st.subheader("Verificação de Identidade por E-mail")
         st.markdown(
-            "Insira o seu endereço de e-mail para receber um código de acesso seguro diretamente na sua caixa de entrada."
+            "Insira o seu endereço de e-mail para receber o código de verificação seguro diretamente na sua caixa de entrada[cite: 2]."
         )
 
         email_input = st.text_input(
@@ -120,6 +128,7 @@ def tela_login():
         )
 
         if st.button("Enviar Código de Verificação"):
+            # Validação rigorosa se o campo está vazio ou inválido
             if not email_input or email_input.strip() == "":
                 st.error(
                     "⚠️ O campo de e-mail está vazio. Por favor, preencha o seu endereço de e-mail corretamente."
@@ -132,20 +141,18 @@ def tela_login():
                 codigo_aleatorio = str(random.randint(100000, 999999))
                 st.session_state.codigo_gerado = codigo_aleatorio
                 st.session_state.email_registado = email_input
-                st.session_state.etapa_email = True
 
-                # Disparo real do e-mail (Seguro: o código NÃO aparece no ecrã)
-                sucesso_envio = enviar_email_real(
-                    email_input, codigo_aleatorio
-                )
+                # Disparo real do e-mail via SMTP
+                sucesso = enviar_email_smtp_real(email_input, codigo_aleatorio)
 
-                if sucesso_envio:
+                if sucesso:
+                    st.session_state.etapa_email = True
                     st.success(
-                        f"✅ Código de verificação enviado com sucesso para **{email_input}**. Verifique a sua caixa de entrada do e-mail!"
+                        f"✅ Código de verificação enviado com sucesso para **{email_input}**. Verifique a sua caixa de entrada[cite: 2]!"
                     )
                 else:
                     st.error(
-                        "❌ Erro ao enviar o e-mail. Verifique se configurou corretamente a Palavra-passe de Aplicação."
+                        "❌ Erro ao enviar o e-mail. Certifique-se de que configurou a Palavra-passe de Aplicação do Gmail corretamente[cite: 2]."
                     )
 
         if st.session_state.etapa_email:
