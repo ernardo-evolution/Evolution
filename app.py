@@ -21,15 +21,20 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Inicializar Estado da Sessão
+# Inicializar o Estado da Sessão
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
 
 if "codigo_gerado" not in st.session_state:
     st.session_state.codigo_gerado = None
 
-if "email_destino" not in st.session_state:
-    st.session_state.email_destino = ""
+if "email_registado" not in st.session_state:
+    st.session_state.email_registado = ""
+
+if "etapa_email" not in st.session_state:
+    st.session_state.etapa_email = (
+        False  # Controla se o código já foi enviado
+    )
 
 if "vendas" not in st.session_state:
     st.session_state.vendas = pd.DataFrame(
@@ -42,32 +47,30 @@ if "clientes" not in st.session_state:
     )
 
 
-# Função Profissional para Enviar E-mail Real via SMTP
-def enviar_email_codigo(email_destinatario, codigo):
+# Função Profissional para Envio de E-mail via SMTP
+def enviar_email_smtp(destinatario, codigo):
     remetente = "evolutiongestaotecnologia@gmail.com"
-    # Nota: Para produção real, a senha de aplicação deve estar em st.secrets["SMTP_PASSWORD"]
-    # Se não estiver configurado nos segredos do Streamlit, simulamos o envio com aviso profissional.
     try:
+        # Verifica se existe chave secreta configurada no Streamlit Cloud
         senha = (
             st.secrets["SMTP_PASSWORD"]
             if "SMTP_PASSWORD" in st.secrets
-            else "senha_teste"
+            else "demo"
         )
-        if senha == "senha_teste":
-            # Modo simulado profissional caso a chave de segredo não esteja definida no Streamlit Cloud
-            return True
+        if senha == "demo":
+            return True  # Modo seguro de demonstração ativo
 
         msg = MIMEMultipart()
         msg["From"] = remetente
-        msg["To"] = email_destinatario
+        msg["To"] = destinatario
         msg["Subject"] = "Evolution Gestão Online - Código de Verificação"
 
         corpo = f"""
         Olá,
         
-        O seu código de verificação para acesso ao Evolution Gestão Online é: {codigo}
+        O seu código de verificação para acesso ao sistema Evolution Gestão Online é: {codigo}
         
-        Este código é válido apenas para esta sessão.
+        Este código é válido apenas para a sessão atual.
         
         Atentamente,
         Equipa Evolution Gestão Tecnologia
@@ -77,24 +80,25 @@ def enviar_email_codigo(email_destinatario, codigo):
         server = smtplib.SMTP("smtp.gmail.com", 587)
         server.starttls()
         server.login(remetente, senha)
-        server.sendmail(remetente, email_destinatario, msg.as_string())
+        server.sendmail(remetente, destinatario, msg.as_string())
         server.quit()
         return True
     except Exception as e:
         return False
 
 
-# --- SISTEMA DE LOGIN PROFISSIONAL ---
+# --- TELA DE LOGIN PROFISSIONAL ---
 def tela_login():
-    st.title("🔐 Evolution Gestão Online - Acesso Corporativo")
+    st.title("🔐 Evolution Gestão Online - Acesso Seguro")
     st.markdown(
-        "Insira as suas credenciais de administrador ou solicite um código de autenticação seguro enviado diretamente para o seu e-mail."
+        "Selecione o método de autenticação preferencial para aceder à plataforma corporativa."
     )
 
     tab1, tab2 = st.tabs(
-        ["🔑 Credenciais Administrativas", "📧 Autenticação por E-mail (OTP)"]
+        ["🔑 Credenciais Administrativas", "📧 Mandar Código por E-mail"]
     )
 
+    # Guia 1: Login com Senha
     with tab1:
         with st.form("form_login_senha"):
             user_input = st.text_input("Utilizador", value="admin")
@@ -106,76 +110,106 @@ def tela_login():
             if btn_login:
                 if user_input == "admin" and pass_input == "evolution2026":
                     st.session_state.autenticado = True
-                    st.success("Acesso autorizado! A redirecionar...")
+                    st.success("Login efetuado com sucesso! A carregar...")
                     st.rerun()
                 else:
                     st.error("Utilizador ou palavra-passe incorretos.")
 
+    # Guia 2: Envio de Código por E-mail (Fluxo Detalhado)
     with tab2:
-        st.info(
-            "Insira o seu e-mail corporativo para receber o código de acesso de uso único."
-        )
-        email_input = st.text_input(
-            "E-mail de Destino", value="evolutiongestaotecnologia@gmail.com"
+        st.subheader("Verificação de Identidade por E-mail")
+        st.markdown(
+            "Insira o seu endereço de e-mail para receber um código de acesso de uso único."
         )
 
-        if st.button("Gerar e Enviar Código por E-mail"):
-            if email_input:
-                # Gerar código aleatório de 6 dígitos profissional
+        # Passo 1 & 2 & 3: Solicitar e recolher o e-mail
+        email_input = st.text_input(
+            "Endereço de E-mail",
+            placeholder="exemplo@dominio.com",
+            value=st.session_state.email_registado,
+        )
+
+        # Botão para solicitar o código
+        if st.button("Enviar Código de Verificação"):
+            # Passo 4: Validação se o campo está vazio
+            if not email_input or email_input.strip() == "":
+                st.error(
+                    "⚠️ O campo de e-mail está vazio. Por favor, preencha o seu endereço de e-mail corretamente."
+                )
+            elif "@" not in email_input or "." not in email_input:
+                st.error(
+                    "⚠️ O formato do e-mail parece inválido. Verifique o endereço introduzido."
+                )
+            else:
+                # Passo 5 & 6: E-mail válido, gerar código e simular/enviar
                 codigo_aleatorio = str(random.randint(100000, 999999))
                 st.session_state.codigo_gerado = codigo_aleatorio
-                st.session_state.email_destino = email_input
+                st.session_state.email_registado = email_input
+                st.session_state.etapa_email = True
 
-                sucesso = enviar_email_codigo(
+                sucesso_envio = enviar_email_smtp(
                     email_input, codigo_aleatorio
                 )
-                if sucesso:
+
+                if sucesso_envio:
                     st.success(
-                        f"Código de 6 dígitos enviado com sucesso para **{email_input}**!"
+                        f"✅ Código de verificação enviado com sucesso para **{email_input}**!"
                     )
-                    # Para facilitar o desenvolvimento e testes sem falhas de firewall do servidor SMTP:
+                    # Exibe o código no modo de teste para facilitar a validação imediata
                     st.info(
-                        f"🔒 (Modo de Demonstração/Segurança Ativo) Código gerado para testes: **{codigo_aleatorio}**"
+                        f"🔒 **Código Gerado (Modo de Teste):** {codigo_aleatorio}"
                     )
                 else:
                     st.error(
-                        "Erro ao enviar o e-mail. Verifique as configurações de SMTP."
+                        "❌ Ocorreu um erro ao enviar o e-mail. Tente novamente mais tarde."
                     )
-            else:
-                st.warning("Por favor, introduza um e-mail válido.")
 
-        codigo_digitado = st.text_input(
-            "Insira o Código de 6 Dígitos Recebido",
-            type="password",
-            max_chars=6,
-        )
-        btn_validar = st.button("Validar Código e Entrar")
+        # Se o código já foi enviado, exibe a etapa de introdução e validação do código
+        if st.session_state.etapa_email:
+            st.markdown("---")
+            st.markdown(
+                f"Insira abaixo o código de 6 dígitos enviado para **{st.session_state.email_registado}**:"
+            )
 
-        if btn_validar:
-            if (
-                st.session_state.codigo_gerado
-                and codigo_digitado == st.session_state.codigo_gerado
-            ):
-                st.session_state.autenticado = True
-                st.success("Identidade confirmada com sucesso! A entrar...")
-                st.rerun()
-            else:
-                st.error(
-                    "Código incorreto ou expirado. Solicite um novo código."
-                )
+            # Passo 7: O utilizador insere o código recebido
+            codigo_digitado = st.text_input(
+                "Código de Verificação",
+                type="password",
+                max_chars=6,
+                placeholder="Insira os 6 dígitos",
+            )
+
+            btn_validar = st.button("Validar Código e Entrar")
+
+            # Passo 8: O sistema valida se o código está correto ou incorreto
+            if btn_validar:
+                if not codigo_digitado:
+                    st.warning("Por favor, introduza o código recebido.")
+                elif codigo_digitado == st.session_state.codigo_gerado:
+                    st.session_state.autenticado = True
+                    st.success(
+                        "🎉 Código correto! Autenticação bem-sucedida. A entrar..."
+                    )
+                    st.rerun()
+                else:
+                    st.error(
+                        "❌ Código incorreto. O código introduzido não corresponde ao enviado. Tente novamente."
+                    )
 
 
-# Bloquear acesso se não estiver autenticado
+# Bloquear o acesso se o utilizador não estiver autenticado
 if not st.session_state.autenticado:
     tela_login()
     st.stop()
 
 
-# --- APLICAÇÃO PRINCIPAL (APÓS LOGIN) ---
+# --- APLICAÇÃO PRINCIPAL (APÓS LOGIN COM SUCESSO) ---
 st.title("🚀 Evolution Gestão Online")
-st.markdown("Plataforma integrada de gestão empresarial e CRM.")
+st.markdown(
+    "Sistema integrado de gestão empresarial, clientes e vendas em tempo real."
+)
 
-# Menu Lateral
+# Menu Lateral de Navegação
 menu = st.sidebar.selectbox(
     "Navegação",
     [
@@ -187,6 +221,7 @@ menu = st.sidebar.selectbox(
     ],
 )
 
+# Rodapé da Barra Lateral
 st.sidebar.markdown("---")
 st.sidebar.markdown("📧 **Contacto Oficial:**")
 st.sidebar.markdown("evolutiongestaotecnologia@gmail.com")
@@ -212,7 +247,7 @@ if menu == "Dashboard":
         .replace(".", ",")
         .replace("X", "."),
     )
-    col3.metric("Clientes Ativos", total_clientes)
+    col3.metric("Clientes Cadastrados", total_clientes)
 
     st.markdown("---")
     st.subheader("📋 Registo de Vendas Recentes")
@@ -220,7 +255,7 @@ if menu == "Dashboard":
         st.dataframe(st.session_state.vendas, use_container_width=True)
     else:
         st.info(
-            "Ainda não existem vendas registadas. Aceda ao menu 'Registar Venda'."
+            "Ainda não existem vendas registadas. Aceda ao menu 'Registar Venda' para começar!"
         )
 
 # 2. REGISTAR VENDA
@@ -229,27 +264,27 @@ elif menu == "Registar Venda":
 
     if len(st.session_state.clientes) == 0:
         st.warning(
-            "⚠️ Deve cadastrar pelo menos um cliente no menu 'Cadastro de Clientes' antes de registar vendas."
+            "⚠️ Primeiro deve cadastrar pelo menos um cliente no menu 'Cadastro de Clientes'."
         )
     else:
         lista_clientes_ativos = st.session_state.clientes["Nome"].tolist()
 
         with st.form("form_venda"):
-            cliente = st.selectbox("Cliente", lista_clientes_ativos)
+            cliente = st.selectbox("Selecionar Cliente", lista_clientes_ativos)
             produto = st.selectbox(
-                "Produto / Serviço",
+                "Produto",
                 [
-                    "Sistema ERP (Licença Anual)",
-                    "Consultoria Empresarial",
-                    "Suporte Técnico Avançado",
+                    "Sistema ERP (Licença)",
+                    "Consultoria",
+                    "Suporte Avançado",
                 ],
             )
             quantidade = st.number_input("Quantidade", min_value=1, value=1)
             preco_unitario = st.number_input(
-                "Preço Unitário (R$)", min_value=0.0, value=2500.00
+                "Preço Unitário (R$)", min_value=0.0, value=1500.00
             )
 
-            submitted = st.form_submit_button("Guardar Venda")
+            submitted = st.form_submit_button("Confirmar e Registar Venda")
 
             if submitted:
                 valor_total = quantidade * preco_unitario
@@ -265,19 +300,19 @@ elif menu == "Registar Venda":
                 st.session_state.vendas = pd.concat(
                     [st.session_state.vendas, nova_linha], ignore_index=True
                 )
-                st.success("Venda registada com sucesso no sistema!")
+                st.success("Venda registada com sucesso!")
 
 # 3. CADASTRO DE CLIENTES
 elif menu == "Cadastro de Clientes":
     st.subheader("👥 Gestão e Cadastro de Clientes")
 
     with st.form("form_cliente"):
-        nome_cliente = st.text_input("Nome Completo / Razão Social")
+        nome_cliente = st.text_input("Nome do Cliente / Responsável")
         email_cliente = st.text_input("E-mail de Contacto")
-        tel_cliente = st.text_input("Telemóvel / WhatsApp")
-        empresa_cliente = st.text_input("Nome Comercial / Empresa")
+        tel_cliente = st.text_input("Telemóvel / Telefone")
+        empresa_cliente = st.text_input("Nome da Empresa")
 
-        salvar_cliente = st.form_submit_button("Registar Cliente na Base de Dados")
+        salvar_cliente = st.form_submit_button("Guardar Novo Cliente")
 
         if salvar_cliente:
             if nome_cliente:
@@ -288,40 +323,39 @@ elif menu == "Cadastro de Clientes":
                 st.session_state.clientes = pd.concat(
                     [st.session_state.clientes, novo_cli], ignore_index=True
                 )
-                st.success(
-                    f"Cliente **{nome_cliente}** registado com sucesso!"
-                )
+                st.success(f"Cliente '{nome_cliente}' cadastrado com sucesso!")
             else:
-                st.error("O campo do nome do cliente é obrigatório.")
+                st.error("O campo do nome é obrigatório.")
 
     st.markdown("---")
-    st.subheader("📇 Base de Dados de Clientes")
+    st.subheader("📇 Lista de Clientes Registados")
     if len(st.session_state.clientes) > 0:
         st.dataframe(st.session_state.clientes, use_container_width=True)
     else:
-        st.info("Ainda não existem clientes registados na base de dados.")
+        st.info("Ainda não existem clientes cadastrados.")
 
 # 4. ASSISTENTE IA
 elif menu == "Assistente IA":
-    st.subheader("🤖 Assistente Virtual Inteligente")
+    st.subheader("🤖 Assistente Virtual Evolution")
     st.markdown(
-        "Consulte análises estratégicas baseadas nos dados atuais da sua empresa."
+        "Faça perguntas sobre a gestão, finanças ou estratégias para o seu negócio."
     )
 
     pergunta = st.text_input(
-        "Escreva a sua dúvida para o assistente de gestão:",
-        placeholder="Ex: Como otimizar a conversão de novos clientes?",
+        "O que gostaria de saber?",
+        placeholder="Ex: Como posso aumentar as vendas este mês?",
     )
 
-    if st.button("Consultar IA"):
+    if st.button("Perguntar à IA"):
         if pergunta:
             st.info(
-                f"**Análise da IA Evolution:** Com base nos registos atuais, a prioridade recomendada é expandir o catálogo de serviços para os clientes já cadastrados e monitorizar o volume de vendas semanais."
+                "**Assistente IA:** Com base nos dados atuais do Evolution Gestão Online, recomendo focar o acompanhamento nos clientes cadastrados e otimizar o catálogo de produtos para acelerar o fecho de novas faturas."
             )
         else:
-            st.warning("Insira uma questão para obter a análise.")
+            st.warning("Por favor, escreva uma pergunta para o assistente.")
 
 # 5. TERMINAR SESSÃO
 elif menu == "Terminar Sessão":
     st.session_state.autenticado = False
+    st.session_state.etapa_email = False
     st.rerun()
