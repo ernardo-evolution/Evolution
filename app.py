@@ -8,7 +8,7 @@ from email.message import EmailMessage
 SMTP_SERVER = "smtp-relay.brevo.com"
 SMTP_PORT = 587
 SMTP_USER = "bd480d001@smtp-brevo.com"
-SMTP_PASSWORD = "COLA_AQUI_A_TUA_CHAVE_DA_BREVO"  # Substitui pela tua chave da Brevo
+SMTP_PASSWORD = "xsmtpsib-d096c91441191fa127af74c066bf671fd22a2d8f1388e83b881f83ada76828cc-I53yeTW1epMDyC4w"  # Substitui pela tua chave da Brevo
 
 def enviar_codigo_por_email(destinatario, codigo):
     """Envia o código de verificação via Brevo SMTP."""
