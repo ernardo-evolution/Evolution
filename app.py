@@ -54,24 +54,9 @@ if "email_utilizador" not in st.session_state:
 if "animacao_vista" not in st.session_state:
   st.session_state.animacao_vista = False
 
-# Base de dados em memória para os Clientes (podes depois ligar a uma base de dados real se precisares)
+# Base de dados em memória para os Clientes (inicia vazia para começares do zero)
 if "clientes" not in st.session_state:
-  st.session_state.clientes = [
-      {
-          "id": 1,
-          "nome": "Empresa Alfa Lda",
-          "email": "contacto@alfa.com",
-          "telefone": "+351 911 222 333",
-          "plano": "Enterprise",
-      },
-      {
-          "id": 2,
-          "nome": "Beta Comércio",
-          "email": "geral@beta.com",
-          "telefone": "+351 922 333 444",
-          "plano": "Profissional",
-      },
-  ]
+  st.session_state.clientes = []
 
 
 # --- FLUXO DE LOGIN / VERIFICAÇÃO ---
@@ -207,7 +192,7 @@ elif st.session_state.etapa == "dashboard":
     st.write("Consulte, adicione ou gira os clientes da plataforma.")
 
     # Formulário para adicionar novo cliente
-    with st.expander("➕ Adicionar Novo Cliente"):
+    with st.expander("➕ Adicionar Novo Cliente", expanded=True):
       with st.form("form_cliente"):
         novo_nome = st.text_input("Nome da Empresa / Cliente")
         novo_email = st.text_input("E-mail de Contacto")
@@ -252,7 +237,10 @@ elif st.session_state.etapa == "dashboard":
             st.rerun()
           st.divider()
     else:
-      st.info("Ainda não existem clientes registados.")
+      st.info(
+          "Ainda não existem clientes registados. Adicione o seu primeiro"
+          " cliente acima!"
+      )
 
   elif menu == "Terminar Sessão":
     st.session_state.etapa = "login"
