@@ -172,26 +172,35 @@ if "vendas" not in st.session_state:
     )
 
 
-# --- 4. FUNÇÕES DE SUPORTE E SEGURANÇA ---
-def enviar_email_smtp(destinatario, codigo):
+# --- 4. FUNÇÃO DE ENVIO REAL POR SMTP ---
+def enviar_email_real(destinatario, codigo):
     try:
-        if "smtp" in st.secrets:
-            remetente = st.secrets["smtp"]["email"]
-            senha = st.secrets["smtp"]["password"]
-            msg = MIMEMultipart()
-            msg["From"] = remetente
-            msg["To"] = destinatario
-            msg["Subject"] = "Evolution Gestão Online - Código de Verificação"
-            corpo = f"O seu código de verificação seguro é: {codigo}. Válido por 10 minutos."
-            msg.attach(MIMEText(corpo, "plain"))
-            server = smtplib.SMTP("smtp.gmail.com", 587)
-            server.starttls()
-            server.login(remetente, senha)
-            server.sendmail(remetente, destinatario, msg.as_string())
-            server.quit()
-            return True
-        return False
-    except Exception:
+        # Lê as credenciais seguras configuradas no Streamlit Cloud (.streamlit/secrets.toml)
+        remetente = st.secrets["smtp"]["email"]
+        senha_app = st.secrets["smtp"]["password"]
+
+        msg = MIMEMultipart()
+        msg["From"] = remetente
+        msg["To"] = destinatario
+        msg["Subject"] = "Evolution Gestão Online - Código de Verificação"
+
+        corpo = (
+            f"Olá!\n\nO seu código de verificação seguro para o Evolution Gestão"
+            f" Online é: {codigo}\n\nEste código é válido por 10 minutos."
+        )
+        msg.attach(MIMEText(corpo, "plain"))
+
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(remetente, senha_app)
+        server.sendmail(remetente, destinatario, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        st.error(
+            "Erro ao enviar o e-mail. Verifique se configurou corretamente os"
+            " secrets no Streamlit Cloud."
+        )
         return False
 
 
@@ -301,25 +310,27 @@ def render_auth():
                             "email": email,
                             "senha": hashlib.sha256(senha.encode()).hexdigest(),
                         }
-                        enviar_email_smtp(email, codigo)
-                        st.session_state.fluxo_registo = "otp"
-                        st.success(
-                            "Código gerado com sucesso! Insira abaixo."
-                        )
-                        st.rerun()
+
+                        # Dispara o envio real para o e-mail informado
+                        with st.spinner("Enviando código por e-mail..."):
+                            sucesso = enviar_email_real(email, codigo)
+
+                        if sucesso:
+                            st.session_state.fluxo_registo = "otp"
+                            st.success(
+                                "Um código de verificação foi enviado para seu"
+                                " e-mail."
+                            )
+                            st.rerun()
             if st.button("Voltar ao Login"):
                 st.session_state.fluxo_registo = "login"
                 st.rerun()
 
         elif st.session_state.fluxo_registo == "otp":
-            st.markdown("### Validação de Código")
+            st.markdown("### Validação de E-mail")
             st.markdown(
-                f"Insira o código de 6 dígitos para **{st.session_state.registo_temp.get('email')}**"
-            )
-
-            # Exibição facilitada de segurança para garantir que nunca fiques travado
-            st.info(
-                f"🔑 **Código de Segurança Ativo:** `{st.session_state.codigo_gerado}`"
+                "Insira o código de 6 dígitos enviado para a sua caixa de"
+                f" correio: **{st.session_state.registo_temp.get('email')}**"
             )
 
             with st.form("form_otp"):
@@ -344,6 +355,14 @@ def render_auth():
                         st.rerun()
                     else:
                         st.error("Código inválido. Tente novamente.")
+
+            if st.button("Reenviar Código"):
+                codigo = str(random.randint(100000, 999999))
+                st.session_state.codigo_gerado = codigo
+                enviar_email_real(
+                    st.session_state.registo_temp.get("email"), codigo
+                )
+                st.success("Um novo código foi enviado para o seu e-mail.")
 
 
 if not st.session_state.autenticado:
@@ -638,5 +657,5 @@ elif menu == "⚙️ Configurações":
     with tab3:
         st.subheader("Informações da Versão")
         st.markdown("**Sistema:** Evolution Gestão Online")
-        st.markdown("**Versão:** 3.7.0 Enterprise SaaS")
+        st.markdown("**Versão:** 3.8.0 Enterprise SaaS")
         st.markdown("**Estado do Servidor:** 🟢 Online e Operacional")
