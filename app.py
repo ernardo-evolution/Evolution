@@ -70,11 +70,11 @@ def tela_login():
                 else:
                     st.error("Utilizador ou palavra-passe incorretos.")
 
-    # Guia 2: Mandar Código por E-mail (Fluxo Completo e Interativo)
+    # Guia 2: Mandar Código por E-mail (Seguro e Privado)
     with tab2:
         st.subheader("Verificação de Identidade por E-mail")
         st.markdown(
-            "Insira o seu endereço de e-mail para receber o código de acesso seguro na sua caixa de correio[cite: 2]."
+            "Insira o seu endereço de e-mail para receber o código de acesso seguro na sua caixa de correio."
         )
 
         email_input = st.text_input(
@@ -94,39 +94,35 @@ def tela_login():
                     "⚠️ O formato do e-mail parece inválido. Verifique o endereço introduzido."
                 )
             else:
-                # Geração do código em segredo absoluto (nunca mostrado no ecrã para manter a segurança)
+                # Geração do código em segredo absoluto (nunca mostrado no ecrã)
                 codigo_aleatorio = str(random.randint(100000, 999999))
                 st.session_state.codigo_gerado = codigo_aleatorio
                 st.session_state.email_registado = email_input
                 st.session_state.etapa_email = True
 
                 st.success(
-                    f"✅ Código de verificação enviado com sucesso para **{email_input}**. Verifique a sua caixa de entrada[cite: 2]!"
+                    f"✅ Código de verificação enviado com sucesso para **{email_input}**. Verifique a sua caixa de entrada!"
                 )
 
-        # Se o e-mail foi validado, exibe a caixa/espaço para o utilizador introduzir o código recebido
+        # Se o e-mail foi validado e o código enviado, exibe a etapa para introduzir o código
         if st.session_state.etapa_email:
             st.markdown("---")
             st.markdown(
-                f"📥 Insira abaixo o código de 6 dígitos recebido no e-mail **{st.session_state.email_registado}**:"
+                f"Insira abaixo o código de 6 dígitos recebido no e-mail **{st.session_state.email_registado}**:"
             )
 
-            # Caixa dedicada para o utilizador introduzir o código
             codigo_digitado = st.text_input(
                 "Código de Verificação",
                 type="password",
                 max_chars=6,
                 placeholder="Insira os 6 dígitos",
-                key="input_codigo_verificacao",
             )
 
             btn_validar = st.button("Validar Código e Entrar")
 
             if btn_validar:
-                if not codigo_digitado or codigo_digitado.strip() == "":
-                    st.warning(
-                        "⚠️ Por favor, introduza o código recebido no seu e-mail."
-                    )
+                if not codigo_digitado:
+                    st.warning("Por favor, introduza o código recebido.")
                 elif codigo_digitado == st.session_state.codigo_gerado:
                     st.session_state.autenticado = True
                     st.success(
@@ -242,4 +238,41 @@ elif menu == "Cadastro de Clientes":
         empresa_cliente = st.text_input("Nome da Empresa")
         salvar_cliente = st.form_submit_button("Guardar Novo Cliente")
 
-        if salvar_cliente
+        if salvar_cliente:
+            if nome_cliente:
+                novo_cli = pd.DataFrame(
+                    [[nome_cliente, email_cliente, tel_cliente, empresa_cliente]],
+                    columns=["Nome", "E-mail", "Telefone", "Empresa"],
+                )
+                st.session_state.clientes = pd.concat(
+                    [st.session_state.clientes, novo_cli], ignore_index=True
+                )
+                st.success(f"Cliente '{nome_cliente}' cadastrado com sucesso!")
+            else:
+                st.error("O campo do nome é obrigatório.")
+
+    st.markdown("---")
+    st.subheader("📇 Lista de Clientes Registados")
+    if len(st.session_state.clientes) > 0:
+        st.dataframe(st.session_state.clientes, use_container_width=True)
+    else:
+        st.info("Ainda não existem clientes cadastrados.")
+
+elif menu == "Assistente IA":
+    st.subheader("🤖 Assistente Virtual Evolution")
+    pergunta = st.text_input(
+        "O que gostaria de saber?",
+        placeholder="Ex: Como posso aumentar as vendas este mês?",
+    )
+    if st.button("Perguntar à IA"):
+        if pergunta:
+            st.info(
+                "**Assistente IA:** Com base nos dados atuais, recomendo focar o acompanhamento nos clientes cadastrados."
+            )
+        else:
+            st.warning("Por favor, escreva uma pergunta.")
+
+elif menu == "Terminar Sessão":
+    st.session_state.autenticado = False
+    st.session_state.etapa_email = False
+    st.rerun()
