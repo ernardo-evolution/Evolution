@@ -10,7 +10,7 @@ SMTP_USER = "bd480d001@smtp-brevo.com"
 SMTP_PASSWORD = "xsmtpsib-d096c91441191fa127af74c066bf671fd22a2d8f1388e83b881f83ada76828cc-I53yeTW1epMDyC4w"  # Substitui pelo código longo que copiaste da Brevo
 
 def enviar_codigo_por_email(destinatario, codigo):
-    """Envia o código de verificação de 6 dígitos via Brevo SMTP para o e-mail real do utilizador."""
+    """Envia o código de verificação de 6 dígitos via Brevo SMTP e mostra erros detalhados se falhar."""
     msg = EmailMessage()
     msg.set_content(
         f"Olá!\n\nO teu código de verificação para o Evolution Gestão Online é: {codigo}\n\n"
@@ -27,7 +27,8 @@ def enviar_codigo_por_email(destinatario, codigo):
             server.send_message(msg)
         return True
     except Exception as e:
-        print(f"Erro detalhado no envio SMTP: {e}")
+        # Mostra o erro exato no ecrã para sabermos o que se passou
+        st.error(f"❌ Erro detalhado da Brevo ao enviar: {e}")
         return False
 
 # --- LÓGICA DE VALIDAÇÃO DE SEGURANÇA NO APP ---
@@ -44,14 +45,9 @@ def executar_validacao_seguranca(email_utilizador):
         sucesso = enviar_codigo_por_email(email_utilizador, codigo_gerado)
         st.session_state["email_enviado_sucesso"] = sucesso
 
-    # Feedback visual para o utilizador
+    # Feedback visual baseado no resultado real
     if st.session_state.get("email_enviado_sucesso"):
         st.success("✉️ O código de verificação foi enviado com sucesso para a tua caixa de correio!")
-    else:
-        st.warning(
-            "⚠️ Não foi possível enviar o e-mail automaticamente. "
-            f"Código de teste para esta sessão: **{st.session_state['codigo_verificacao']}**"
-        )
 
     # Input do código pelo utilizador
     codigo_inserido = st.text_input("Código de verificação", type="default")
@@ -75,7 +71,6 @@ if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 
 if not st.session_state["autenticado"]:
-    # E-mail de teste configurado
     executar_validacao_seguranca("bernardobonfim.reis26@gmail.com")
 else:
     st.title("🚀 Evolution Gestão Online (v3.8.1)")
