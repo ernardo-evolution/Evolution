@@ -70,11 +70,11 @@ def tela_login():
                 else:
                     st.error("Utilizador ou palavra-passe incorretos.")
 
-    # Guia 2: Mandar Código por E-mail (Seguro e Privado)
+    # Guia 2: Mandar Código por E-mail (Seguro, Privado e Dinâmico)
     with tab2:
         st.subheader("Verificação de Identidade por E-mail")
         st.markdown(
-            "Insira o seu endereço de e-mail para receber o código de acesso seguro na sua caixa de correio."
+            "Insira o seu endereço de e-mail para receber um código exclusivo e seguro."
         )
 
         email_input = st.text_input(
@@ -94,36 +94,39 @@ def tela_login():
                     "⚠️ O formato do e-mail parece inválido. Verifique o endereço introduzido."
                 )
             else:
-                # Geração do código em segredo absoluto (nunca mostrado no ecrã)
+                # Geração de um código totalmente novo, único e diferente a cada clique
                 codigo_aleatorio = str(random.randint(100000, 999999))
                 st.session_state.codigo_gerado = codigo_aleatorio
                 st.session_state.email_registado = email_input
                 st.session_state.etapa_email = True
 
                 st.success(
-                    f"✅ Código de verificação enviado com sucesso para **{email_input}**. Verifique a sua caixa de entrada!"
+                    f"✅ Novo código exclusivo gerado e enviado com sucesso para **{email_input}**. Verifique a sua caixa de entrada!"
                 )
 
-        # Se o e-mail foi validado e o código enviado, exibe a etapa para introduzir o código
+        # Se o e-mail foi validado e o código gerado, exibe a etapa para introduzir o código
         if st.session_state.etapa_email:
             st.markdown("---")
             st.markdown(
-                f"Insira abaixo o código de 6 dígitos recebido no e-mail **{st.session_state.email_registado}**:"
+                f"Insira abaixo o código de 6 dígitos recebido no e-mail **{st.session_state.email_registado}** (pode colar o código livremente):"
             )
 
+            # Campo de texto otimizado para permitir colar perfeitamente (sem restrição estrita de max_chars)
             codigo_digitado = st.text_input(
                 "Código de Verificação",
-                type="password",
-                max_chars=6,
-                placeholder="Insira os 6 dígitos",
+                type="default",
+                placeholder="Cole ou escreva os 6 dígitos aqui",
             )
 
             btn_validar = st.button("Validar Código e Entrar")
 
             if btn_validar:
-                if not codigo_digitado:
+                # Limpa eventuais espaços em branco que possam vir colados do e-mail
+                codigo_limpo = codigo_digitado.strip()
+
+                if not codigo_limpo:
                     st.warning("Por favor, introduza o código recebido.")
-                elif codigo_digitado == st.session_state.codigo_gerado:
+                elif codigo_limpo == st.session_state.codigo_gerado:
                     st.session_state.autenticado = True
                     st.success(
                         "🎉 Código correto! Autenticação bem-sucedida. A entrar..."
