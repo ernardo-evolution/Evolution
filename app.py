@@ -446,4 +446,202 @@ elif menu == "📊 Vendas":
             with c1:
                 data_venda = st.date_input("Data", value=datetime.today())
                 cliente_venda = st.selectbox(
-                    "Cliente", st.session
+                    "Cliente", st.session_state.clientes["Nome"].tolist()
+                )
+                vendedor_venda = st.selectbox(
+                    "Vendedor", ["Ana", "Bruno", "Carla"]
+                )
+            with c2:
+                produto_venda = st.selectbox(
+                    "Produto", st.session_state.produtos["Nome"].tolist()
+                )
+                quantidade_venda = st.number_input(
+                    "Quantidade", min_value=1, value=1
+                )
+                preco_unit = float(
+                    st.session_state.produtos.loc[
+                        st.session_state.produtos["Nome"] == produto_venda,
+                        "Preço",
+                    ].values[0]
+                )
+                st.markdown(f"**Preço Unitário:** R$ {preco_unit:,.2f}")
+
+            submeter_venda = st.form_submit_button("Confirmar e Registar Venda")
+            if submeter_venda:
+                valor_total_calc = quantidade_venda * preco_unit
+                nova_linha = pd.DataFrame(
+                    {
+                        "Data": [str(data_venda)],
+                        "Cliente": [cliente_venda],
+                        "Vendedor": [vendedor_venda],
+                        "Produto": [produto_venda],
+                        "Quantidade": [quantidade_venda],
+                        "Valor Unitário": [preco_unit],
+                        "Valor Total": [valor_total_calc],
+                        "Status": ["Concluída"],
+                    }
+                )
+                st.session_state.vendas = pd.concat(
+                    [st.session_state.vendas, nova_linha], ignore_index=True
+                )
+                st.success("Venda registrada com sucesso!")
+
+    st.markdown("---")
+    st.subheader("Histórico de Vendas")
+    st.dataframe(st.session_state.vendas, use_container_width=True)
+
+
+# --- PRODUTOS ---
+elif menu == "📦 Produtos":
+    st.title("Gestão de Inventário e Produtos")
+    with st.expander("Cadastrar Novo Produto"):
+        with st.form("form_produto"):
+            nome_p = st.text_input("Nome do Produto")
+            cat_p = st.selectbox(
+                "Categoria",
+                ["Software", "Hardware", "Acessórios", "Serviços"],
+            )
+            preco_p = st.number_input("Preço (R$)", min_value=0.0, value=100.0)
+            estoque_p = st.number_input("Estoque Inicial", min_value=0, value=10)
+            status_p = st.selectbox(
+                "Status",
+                ["🟢 Disponível", "🟡 Estoque baixo", "🔴 Sem estoque"],
+            )
+            salvar_p = st.form_submit_button("Guardar Produto")
+            if salvar_p:
+                if nome_p:
+                    novo_prod = pd.DataFrame(
+                        [[nome_p, cat_p, preco_p, estoque_p, status_p]],
+                        columns=[
+                            "Nome",
+                            "Categoria",
+                            "Preço",
+                            "Estoque",
+                            "Status",
+                        ],
+                    )
+                    st.session_state.produtos = pd.concat(
+                        [st.session_state.produtos, novo_prod], ignore_index=True
+                    )
+                    st.success("Operação realizada com sucesso.")
+                else:
+                    st.error("Verifique os dados informados.")
+
+    st.markdown("---")
+    st.dataframe(st.session_state.produtos, use_container_width=True)
+
+
+# --- CLIENTES ---
+elif menu == "👥 Clientes":
+    st.title("Gestão de Clientes (CRM)")
+    with st.expander("Cadastrar Novo Cliente"):
+        with st.form("form_cliente"):
+            c1, c2 = st.columns(2)
+            with c1:
+                nome_c = st.text_input("Nome da Empresa / Cliente")
+                email_c = st.text_input("E-mail de Contacto")
+                tel_c = st.text_input("Telemóvel / Telefone")
+            with c2:
+                doc_c = st.text_input("CPF / CNPJ")
+                cidade_c = st.text_input("Cidade")
+                data_c = str(datetime.today().date())
+            salvar_c = st.form_submit_button("Cadastrar Cliente")
+            if salvar_c:
+                if nome_c:
+                    novo_cli = pd.DataFrame(
+                        [
+                            [
+                                nome_c,
+                                email_c,
+                                tel_c,
+                                doc_c,
+                                cidade_c,
+                                data_c,
+                            ]
+                        ],
+                        columns=[
+                            "Nome",
+                            "E-mail",
+                            "Telefone",
+                            "CPF/CNPJ",
+                            "Cidade",
+                            "Data de Cadastro",
+                        ],
+                    )
+                    st.session_state.clientes = pd.concat(
+                        [st.session_state.clientes, novo_cli], ignore_index=True
+                    )
+                    st.success("Operação realizada com sucesso.")
+                else:
+                    st.error("Verifique os dados informados.")
+
+    st.markdown("---")
+    st.dataframe(st.session_state.clientes, use_container_width=True)
+
+
+# --- VENDEDORES ---
+elif menu == "👤 Vendedores":
+    st.title("Ranking de Vendedores")
+    if len(st.session_state.vendas) > 0:
+        resumo_vendedores = (
+            st.session_state.vendas.groupby("Vendedor")
+            .agg(
+                Num_Vendas=("Valor Total", "count"),
+                Faturamento=("Valor Total", "sum"),
+            )
+            .reset_index()
+        )
+        resumo_vendedores["Ticket Médio"] = (
+            resumo_vendedores["Faturamento"] / resumo_vendedores["Num_Vendas"]
+        )
+        resumo_vendedores = resumo_vendedores.sort_values(
+            by="Faturamento", ascending=False
+        ).reset_index(drop=True)
+        medalhas = ["🥇 1º lugar", "🥈 2º lugar", "🥉 3º lugar"]
+        resumo_vendedores["Posição"] = [
+            medalhas[i] if i < 3 else f"{i+1}º lugar"
+            for i in range(len(resumo_vendedores))
+        ]
+        st.dataframe(resumo_vendedores, use_container_width=True)
+    else:
+        st.info("Sem dados de vendas suficientes para gerar o ranking.")
+
+
+# --- RELATÓRIOS ---
+elif menu == "📈 Relatórios":
+    st.title("Relatórios e Indicadores Avançados")
+    st.markdown("Análise detalhada do desempenho comercial e financeiro.")
+    if len(st.session_state.vendas) > 0:
+        faturamento_medio = st.session_state.vendas["Valor Total"].mean()
+        st.metric("Ticket Médio Geral", f"R$ {faturamento_medio:,.2f}")
+        df_prod = (
+            st.session_state.vendas.groupby("Produto")["Quantidade"]
+            .sum()
+            .reset_index()
+        )
+        st.bar_chart(df_prod.set_index("Produto"))
+    else:
+        st.info("Aguardando registos de vendas para gerar relatórios.")
+
+
+# --- CONFIGURAÇÕES ---
+elif menu == "⚙️ Configurações":
+    st.title("Configurações do Sistema")
+    tab1, tab2, tab3 = st.tabs(["Minha Conta", "Segurança", "Sistema"])
+    with tab1:
+        st.subheader("Perfil do Utilizador")
+        st.text_input("Nome", value=st.session_state.utilizador_atual)
+        st.text_input(
+            "Cargo", value=st.session_state.cargo_atual, disabled=True
+        )
+    with tab2:
+        st.subheader("Alterar Senha")
+        st.text_input("Senha Atual", type="password")
+        st.text_input("Nova Senha", type="password")
+        if st.button("Atualizar Senha"):
+            st.success("Operação realizada com sucesso.")
+    with tab3:
+        st.subheader("Informações da Versão")
+        st.markdown("**Sistema:** Evolution Gestão Online")
+        st.markdown("**Versão:** 3.6.1 Enterprise SaaS")
+        st.markdown("**Estado do Servidor:** 🟢 Online e Operacional")
