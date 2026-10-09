@@ -130,7 +130,7 @@ def init_db():
 
     conn.commit()
 
-    # Inserir dados padrão se vazio
+    # Inserir dados padrão da empresa apenas se vazio (sem utilizadores predefinidos)
     cursor.execute("SELECT COUNT(*) FROM empresa")
     if cursor.fetchone()[0] == 0:
       cursor.execute(
@@ -145,13 +145,6 @@ def init_db():
               "Português",
               "UTC-3",
           ),
-      )
-
-    cursor.execute("SELECT COUNT(*) FROM usuarios")
-    if cursor.fetchone()[0] == 0:
-      cursor.execute(
-          "INSERT INTO usuarios (nome, email, nivel) VALUES (?, ?, ?)",
-          ("Carlos Admin", "carlos@evolution.com", "Administrador"),
       )
 
     conn.commit()
@@ -241,9 +234,9 @@ t = DICIONARIO["Português"]
 if "autenticado" not in st.session_state:
   st.session_state["autenticado"] = False
 if "usuario_atual" not in st.session_state:
-  st.session_state["usuario_atual"] = "Carlos Admin"
+  st.session_state["usuario_atual"] = ""
 if "nivel_acesso" not in st.session_state:
-  st.session_state["nivel_acesso"] = "Administrador"
+  st.session_state["nivel_acesso"] = ""
 
 emp = carregar_empresa()
 simbolo_ativo = emp["simbolo"]
@@ -261,13 +254,12 @@ def formatar_moeda(valor):
 
 # --- BARRA LATERAL ---
 with st.sidebar:
-  st.info(
-      f"👤 Utilizador: **{st.session_state['usuario_atual']}**\n🔑 Nível:"
-      f" **{st.session_state['nivel_acesso']}**"
-  )
-  st.markdown("---")
-
   if st.session_state["autenticado"]:
+    st.info(
+        f"👤 Utilizador: **{st.session_state['usuario_atual']}**\n🔑 Nível:"
+        f" **{st.session_state['nivel_acesso']}**"
+    )
+    st.markdown("---")
     menu = st.radio(
         "Navegação",
         [
@@ -287,32 +279,73 @@ with st.sidebar:
     st.markdown("---")
     if st.button(t["sair"]):
       st.session_state["autenticado"] = False
+      st.session_state["usuario_atual"] = ""
+      st.session_state["nivel_acesso"] = ""
       st.rerun()
+  else:
+    st.warning("Efetue login para aceder ao sistema.")
 
 
-# --- TELA DE LOGIN / SEGURANÇA ---
+# --- TELA DE LOGIN / REGISTO DE UTILIZADORES ---
 if not st.session_state["autenticado"]:
   st.title(t["titulo"])
-  st.markdown("### Acesso Restrito ao Sistema")
-  email_login = st.text_input("E-mail corporativo")
-  if st.button("Entrar no Sistema"):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT nome, nivel FROM usuarios WHERE email = ?", (email_login,)
-    )
-    user = cursor.fetchone()
-    conn.close()
-    if user or email_login == "carlos@evolution.com":
-      st.session_state["autenticado"] = True
-      st.session_state["usuario_atual"] = (
-          user[0] if user else "Carlos Funcionário"
+  tab_login, tab_registo = st.tabs(["🔑 Iniciar Sessão", "📝 Registar Utilizador"])
+
+  with tab_login:
+    st.markdown("### Acesso Restrito ao Sistema")
+    email_login = st.text_input("E-mail corporativo", key="login_email")
+    if st.button("Entrar no Sistema"):
+      if email_login:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT nome, nivel FROM usuarios WHERE email = ?", (email_login,)
+        )
+        user = cursor.fetchone()
+        conn.close()
+
+        if user:
+          st.session_state["autenticado"] = True
+          st.session_state["usuario_atual"] = user[0]
+          st.session_state["nivel_acesso"] = user[1]
+          st.success("Acesso autorizado com sucesso!")
+          st.rerun()
+        else:
+          st.error(
+              "Utilizador não encontrado. Registe-se na aba ao lado se ainda"
+              " não tiver conta."
+          )
+      else:
+        st.warning("Insira o seu e-mail.")
+
+  with tab_registo:
+    st.markdown("### Criar Nova Conta de Utilizador")
+    with st.form("form_reg_novo_user"):
+      nome_novo = st.text_input("Nome Completo")
+      email_novo = st.text_input("E-mail Corporativo")
+      nivel_novo = st.selectbox(
+          "Nível de Acesso", ["Administrador", "Gerente", "Funcionário"]
       )
-      st.session_state["nivel_acesso"] = user[1] if user else "Funcionário"
-      st.success("Acesso autorizado com sucesso!")
-      st.rerun()
-    else:
-      st.error("Utilizador não encontrado.")
+      if st.form_submit_button("Criar Conta"):
+        if nome_novo and email_novo:
+          conn = sqlite3.connect(DB_FILE)
+          cursor = conn.cursor()
+          cursor.execute(
+              "SELECT id FROM usuarios WHERE email = ?", (email_novo,)
+          )
+          existe = cursor.fetchone()
+          if existe:
+            st.error("Este e-mail já está registado.")
+          else:
+            cursor.execute(
+                "INSERT INTO usuarios (nome, email, nivel) VALUES (?, ?, ?)",
+                (nome_novo, email_novo, nivel_novo),
+            )
+            conn.commit()
+            conn.close()
+            st.success("Conta criada com sucesso! Já pode fazer login.")
+        else:
+          st.warning("Preencha todos os campos obrigatórios.")
 
 else:
   st.title(t["titulo"])
