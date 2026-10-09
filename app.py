@@ -123,4 +123,106 @@ if not st.session_state.logged_in:
         
         user_code = st.text_input("Introduza o código de verificação", max_chars=6)
         
-        if st
+        if st.button("Confirmar Código"):
+            if user_code == st.session_state.verification_code:
+                st.success("E-mail verificado com sucesso! A entrar...")
+                st.session_state.logged_in = True
+                st.session_state.step = "app"
+                st.rerun()
+            else:
+                st.error("Código incorreto. Tente novamente.")
+                
+        if st.button("Reenviar Código"):
+            code = str(random.randint(100000, 999999))
+            st.session_state.verification_code = code
+            status_code, response_text = send_emailjs_code(st.session_state.temp_user_data.get('email'), code)
+            if status_code == 200:
+                st.success("Novo código enviado!")
+            else:
+                st.error(f"Erro ao reenviar: {response_text}")
+
+# --- APLICAÇÃO PRINCIPAL (COM CLIENTES, PRODUTOS E IA) ---
+else:
+    st.sidebar.title("A Evolution 🚀")
+    st.sidebar.write(f"Utilizador: **{st.session_state.temp_user_data.get('name', 'Admin')}**")
+    
+    menu = st.sidebar.selectbox("Navegação", [
+        "Dashboard", 
+        "Gestão de Clientes", 
+        "Gestão de Produtos", 
+        "Assistente de IA", 
+        "Sair"
+    ])
+    
+    if menu == "Dashboard":
+        st.title("🚀💨 Dashboard - A Evolution Gestão Online")
+        
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            st.metric("Total de Clientes", len(st.session_state.clients))
+        with col_m2:
+            st.metric("Total de Produtos", len(st.session_state.products))
+            
+        st.info("O sistema iniciou completamente limpo, pronto a registar dados reais.")
+        
+    elif menu == "Gestão de Clientes":
+        st.title("👥 Gestão de Clientes")
+        
+        with st.form("add_client"):
+            new_client_name = st.text_input("Nome do Cliente")
+            new_client_email = st.text_input("E-mail do Cliente")
+            add_btn = st.form_submit_button("Adicionar Cliente")
+            
+            if add_btn and new_client_name:
+                st.session_state.clients.append({"name": new_client_name, "email": new_client_email})
+                st.success(f"Cliente {new_client_name} adicionado com sucesso!")
+                
+        if st.session_state.clients:
+            st.write("### Lista de Clientes Registados")
+            for idx, client in enumerate(st.session_state.clients):
+                st.write(f"{idx+1}. **{client['name']}** ({client['email']})")
+        else:
+            st.warning("Ainda não existem clientes registados na base de dados.")
+            
+    elif menu == "Gestão de Produtos":
+        st.title("📦 Gestão de Produtos")
+        
+        with st.form("add_product"):
+            prod_name = st.text_input("Nome do Produto")
+            prod_price = st.number_input("Preço (€)", min_value=0.0, format="%.2f")
+            prod_stock = st.number_input("Stock Inicial", min_value=0, step=1)
+            add_prod_btn = st.form_submit_button("Adicionar Produto")
+            
+            if add_prod_btn and prod_name:
+                st.session_state.products.append({"name": prod_name, "price": prod_price, "stock": prod_stock})
+                st.success(f"Produto {prod_name} adicionado com sucesso!")
+                
+        if st.session_state.products:
+            st.write("### Lista de Produtos em Stock")
+            for idx, prod in enumerate(st.session_state.products):
+                st.write(f"{idx+1}. **{prod['name']}** — Preço: **{prod['price']:.2f}€** | Stock: **{prod['stock']} unidades**")
+        else:
+            st.warning("Ainda não existem produtos registados no sistema.")
+            
+    elif menu == "Assistente de IA":
+        st.title("🤖 Assistente de IA - A Evolution")
+        st.write("Converse com o assistente inteligente para obter orientações de negócio, dicas de produtividade ou apoio à gestão.")
+        
+        for message in st.session_state.chat_messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+                
+        if prompt := st.chat_input("Escreva a sua questão para a IA..."):
+            st.session_state.chat_messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+                
+            response = f"Compreendi a sua questão sobre '{prompt}'. Como gestor de A Evolution Gestão Online, recomendo analisar o seu fluxo de caixa e manter os dados de clientes e produtos devidamente atualizados."
+            st.session_state.chat_messages.append({"role": "assistant", "content": response})
+            with st.chat_message("assistant"):
+                st.markdown(response)
+                
+    elif menu == "Sair":
+        st.session_state.logged_in = False
+        st.session_state.step = "signup"
+        st.rerun()
