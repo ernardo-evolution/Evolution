@@ -76,7 +76,7 @@ DICIONARIO = {
         "clientes": "Gestión de Clientes",
         "produtos": "Gestión de Productos",
         "ia": "Asistente IA",
-        "verificacao": "Seguridad - Verificación de Correo",
+        "verificacao": "Segurança - Verificación de Correo",
         "enviar_codigo": "Enviar Código de Verificación",
         "email_label": "Correo Electrónico del Destinatario",
         "codigo_label": "Ingrese el código recibido (6 dígitos)",
@@ -109,7 +109,7 @@ if "clientes" not in st.session_state:
 if "produtos" not in st.session_state:
   st.session_state["produtos"] = []
 
-# --- SELETOR DE IDIOMA NA BARRA LATERAL (SEM IMAGEM SUPÉRFLUA) ---
+# --- SELETOR DE IDIOMA NA BARRA LATERAL (SEM IMAGENS) ---
 with st.sidebar:
   idioma_atual = st.selectbox("Idioma / Language", ["Português", "English", "Español"])
   t = DICIONARIO[idioma_atual]
@@ -147,7 +147,7 @@ def disparar_emailjs(email_destino, codigo):
     return False
 
 
-# --- BLOCO DE SEGURANÇA / LOGIN (DUAS COLUNAS COM LOGÍSTICA/TECNOLOGIA) ---
+# --- BLOCO DE SEGURANÇA / LOGIN (DUAS COLUNAS COM ESTILO VETORIAL E SEM LEGENDA) ---
 if not st.session_state["autenticado"]:
   st.title(t["titulo"])
   st.markdown("### Acesso Restrito - Validação por E-mail")
@@ -184,10 +184,9 @@ if not st.session_state["autenticado"]:
           st.error(t["erro_verif"])
 
   with col2:
-    # Imagem focada em armazém/logística e tecnologia (sem textos e limpa)
+    # Ilustração no estilo pretendido e sem o parâmetro 'caption' (sem texto em baixo)[cite: 7]
     st.image(
-        "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=1000&auto=format&fit=crop",
-        caption="A Evolution Gestão Online - Logística e Gestão de Stock",
+        "https://img.freepik.com/free-vector/business-team-brainstorming-discussing-startup-project_74855-6908.jpg",
         use_column_width=True
     )
 
