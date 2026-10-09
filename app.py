@@ -46,7 +46,7 @@ if "temp_user_data" not in st.session_state:
 if "clients" not in st.session_state:
     st.session_state.clients = []  # Zero clientes padrão (estado limpo)
 
-# --- FUNÇÃO DE ENVIO DE E-MAIL VIA EMAILJS (CONFIGURADA COM AS TUA CHAVES) ---
+# --- FUNÇÃO DE ENVIO DE E-MAIL VIA EMAILJS ---
 def send_emailjs_code(to_email, code):
     url = "https://api.emailjs.com/api/v1.0/email/send"
     payload = {
@@ -69,20 +69,20 @@ def send_emailjs_code(to_email, code):
 if not st.session_state.logged_in:
     
     if st.session_state.step == "signup":
-        # Layout de duas colunas (Esquerda: Formulário | Direita: Nova Ilustração Corporativa)
+        # Layout de duas colunas (Esquerda: Formulário em Português | Direita: Ilustração Corporativa)
         col1, col2 = st.columns([1, 1], gap="large")
         
         with col1:
-            st.markdown("<h1>Get Started Now</h1>", unsafe_allow_html=True)
+            st.markdown("<h1>Começar Agora</h1>", unsafe_allow_html=True)
             st.write("Crie a sua conta para aceder a A Evolution Gestão Online.")
             
             with st.form("signup_form"):
-                name = st.text_input("Name", placeholder="Enter your name")
-                email = st.text_input("Email address", placeholder="Enter your email")
-                password = st.text_input("Password", type="password", placeholder="Password")
-                terms = st.checkbox("I agree to the terms & policy")
+                name = st.text_input("Nome", placeholder="Introduza o seu nome")
+                email = st.text_input("Endereço de e-mail", placeholder="Introduza o seu e-mail")
+                password = st.text_input("Palavra-passe", type="password", placeholder="Palavra-passe")
+                terms = st.checkbox("Concordo com os termos e políticas")
                 
-                submitted = st.form_submit_button("Signup")
+                submitted = st.form_submit_button("Registar")
                 
                 if submitted:
                     if not name or not email or not password:
@@ -107,7 +107,7 @@ if not st.session_state.logged_in:
                         st.session_state.step = "verify"
                         st.rerun()
 
-            st.write("Have an account? **Sign In**")
+            st.write("Já tem uma conta? **Entrar**")
             
         with col2:
             # Ilustração corporativa de equipa
@@ -150,25 +150,3 @@ else:
         st.info("O sistema iniciou completamente limpo, sem registos predefinidos.")
         
     elif menu == "Gestão de Clientes":
-        st.title("👥 Gestão de Clientes")
-        
-        with st.form("add_client"):
-            new_client_name = st.text_input("Nome do Cliente")
-            new_client_email = st.text_input("E-mail do Cliente")
-            add_btn = st.form_submit_button("Adicionar Cliente")
-            
-            if add_btn and new_client_name:
-                st.session_state.clients.append({"name": new_client_name, "email": new_client_email})
-                st.success(f"Cliente {new_client_name} adicionado com sucesso!")
-                
-        if st.session_state.clients:
-            st.write("### Lista de Clientes Registados")
-            for idx, client in enumerate(st.session_state.clients):
-                st.write(f"{idx+1}. **{client['name']}** ({client['email']})")
-        else:
-            st.warning("Ainda não existem clientes registados na base de dados.")
-            
-    elif menu == "Sair":
-        st.session_state.logged_in = False
-        st.session_state.step = "signup"
-        st.rerun()
