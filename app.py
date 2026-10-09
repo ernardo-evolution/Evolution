@@ -34,7 +34,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Inicializar estados da sessão
+# Inicializar estados da sessão (Estado limpo por padrão)
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "step" not in st.session_state:
@@ -45,8 +45,14 @@ if "temp_user_data" not in st.session_state:
     st.session_state.temp_user_data = {}
 if "clients" not in st.session_state:
     st.session_state.clients = []
+if "products" not in st.session_state:
+    st.session_state.products = []
+if "chat_messages" not in st.session_state:
+    st.session_state.chat_messages = [
+        {"role": "assistant", "content": "Olá! Sou o assistente de IA de A Evolution Gestão Online. Como posso ajudar a otimizar o seu negócio hoje?"}
+    ]
 
-# --- FUNÇÃO DE ENVIO DE E-MAIL COM DEBUG DE ERRO ---
+# --- FUNÇÃO DE ENVIO DE E-MAIL COM DEBUG ---
 def send_emailjs_code(to_email, code):
     url = "https://api.emailjs.com/api/v1.0/email/send"
     payload = {
@@ -61,7 +67,6 @@ def send_emailjs_code(to_email, code):
     }
     try:
         response = requests.post(url, json=payload)
-        # Retorna o status e o texto da resposta para sabermos o motivo se falhar
         return response.status_code, response.text
     except Exception as e:
         return 500, str(e)
@@ -118,56 +123,4 @@ if not st.session_state.logged_in:
         
         user_code = st.text_input("Introduza o código de verificação", max_chars=6)
         
-        if st.button("Confirmar Código"):
-            if user_code == st.session_state.verification_code:
-                st.success("E-mail verificado com sucesso! A entrar...")
-                st.session_state.logged_in = True
-                st.session_state.step = "app"
-                st.rerun()
-            else:
-                st.error("Código incorreto. Tente novamente.")
-                
-        if st.button("Reenviar Código"):
-            code = str(random.randint(100000, 999999))
-            st.session_state.verification_code = code
-            status_code, response_text = send_emailjs_code(st.session_state.temp_user_data.get('email'), code)
-            if status_code == 200:
-                st.success("Novo código enviado!")
-            else:
-                st.error(f"Erro ao reenviar: {response_text}")
-
-# --- APLICAÇÃO PRINCIPAL ---
-else:
-    st.sidebar.title("A Evolution 🚀")
-    st.sidebar.write(f"Utilizador: **{st.session_state.temp_user_data.get('name', 'Admin')}**")
-    
-    menu = st.sidebar.selectbox("Navegação", ["Dashboard", "Gestão de Clientes", "Sair"])
-    
-    if menu == "Dashboard":
-        st.title("🚀💨 Dashboard - A Evolution Gestão Online")
-        st.metric("Total de Clientes", len(st.session_state.clients))
-        st.info("O sistema iniciou completamente limpo, sem registos predefinidos.")
-        
-    elif menu == "Gestão de Clientes":
-        st.title("👥 Gestão de Clientes")
-        
-        with st.form("add_client"):
-            new_client_name = st.text_input("Nome do Cliente")
-            new_client_email = st.text_input("E-mail do Cliente")
-            add_btn = st.form_submit_button("Adicionar Cliente")
-            
-            if add_btn and new_client_name:
-                st.session_state.clients.append({"name": new_client_name, "email": new_client_email})
-                st.success(f"Cliente {new_client_name} adicionado com sucesso!")
-                
-        if st.session_state.clients:
-            st.write("### Lista de Clientes Registados")
-            for idx, client in enumerate(st.session_state.clients):
-                st.write(f"{idx+1}. **{client['name']}** ({client['email']})")
-        else:
-            st.warning("Ainda não existem clientes registados na base de dados.")
-            
-    elif menu == "Sair":
-        st.session_state.logged_in = False
-        st.session_state.step = "signup"
-        st.rerun()
+        if st
