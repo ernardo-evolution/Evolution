@@ -46,13 +46,14 @@ if "temp_user_data" not in st.session_state:
 if "clients" not in st.session_state:
     st.session_state.clients = []  # Zero clientes padrão (estado limpo)
 
-# --- FUNÇÃO DE ENVIO DE E-MAIL VIA EMAILJS ---
+# --- FUNÇÃO DE ENVIO DE E-MAIL VIA EMAILJS (COM CHAVE PRIVADA) ---
 def send_emailjs_code(to_email, code):
     url = "https://api.emailjs.com/api/v1.0/email/send"
     payload = {
         "service_id": "service_15qkad9",
         "template_id": "template_mm4esan",
         "user_id": "PCUYqPfeqGQMvHbaD",
+        "accessToken": "Mt1w97IKOc8mG4pbR7AAU",
         "template_params": {
             "to_email": to_email,
             "codigo": code
@@ -95,14 +96,14 @@ if not st.session_state.logged_in:
                         st.session_state.verification_code = code
                         st.session_state.temp_user_data = {"name": name, "email": email}
                         
-                        # Disparar e-mail real via EmailJS
+                        # Disparar e-mail real via EmailJS com autenticação completa
                         with st.spinner("A enviar código de verificação por e-mail... 🚀💨"):
                             success = send_emailjs_code(email, code)
                             
                         if success:
                             st.success(f"E-mail enviado com sucesso para {email}!")
                         else:
-                            st.warning("E-mail disparado (verifique a caixa de entrada ou spam).")
+                            st.error("Falha ao enviar o e-mail. Verifique as credenciais no painel.")
                             
                         st.session_state.step = "verify"
                         st.rerun()
