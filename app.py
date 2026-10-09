@@ -109,9 +109,8 @@ if "clientes" not in st.session_state:
 if "produtos" not in st.session_state:
   st.session_state["produtos"] = []
 
-# --- SELETOR DE IDIOMA NA BARRA LATERAL ---
+# --- SELETOR DE IDIOMA NA BARRA LATERAL (SEM IMAGEM SUPÉRFLUA) ---
 with st.sidebar:
-  st.image("https://images.unsplash.com/photo-1551836022-d5d88e9218df?q=80&w=200&auto=format&fit=crop", width=70)
   idioma_atual = st.selectbox("Idioma / Language", ["Português", "English", "Español"])
   t = DICIONARIO[idioma_atual]
 
@@ -148,7 +147,7 @@ def disparar_emailjs(email_destino, codigo):
     return False
 
 
-# --- BLOCO DE SEGURANÇA / LOGIN (ESTILO DUAS COLUNAS COM A ILUSTRAÇÃO CORPORATIVA) ---
+# --- BLOCO DE SEGURANÇA / LOGIN (DUAS COLUNAS COM LOGÍSTICA/TECNOLOGIA) ---
 if not st.session_state["autenticado"]:
   st.title(t["titulo"])
   st.markdown("### Acesso Restrito - Validação por E-mail")
@@ -185,10 +184,10 @@ if not st.session_state["autenticado"]:
           st.error(t["erro_verif"])
 
   with col2:
-    # Utilizando a imagem de ilustração corporativa que enviaste
+    # Imagem focada em armazém/logística e tecnologia (sem textos e limpa)
     st.image(
-        "https://img.freepik.com/free-vector/business-team-brainstorming-discussing-startup-project_74855-6908.jpg",
-        caption="A Evolution Gestão Online - Trabalho em Equipa e Gestão",
+        "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=1000&auto=format&fit=crop",
+        caption="A Evolution Gestão Online - Logística e Gestão de Stock",
         use_column_width=True
     )
 
