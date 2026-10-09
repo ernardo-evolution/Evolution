@@ -241,8 +241,6 @@ def carregar_empresa():
 
 def disparar_emailjs(destinatario, nome_usuario, codigo):
   """Dispara o EmailJS de forma segura injetando script no cliente"""
-  ej_conf = st.st.secrets.get("emailjs", {}) if hasattr(st, "secrets") else {}
-  # Fallback seguro para segredos do Streamlit
   try:
     ej_conf = st.secrets.get("emailjs", {})
   except:
@@ -405,7 +403,6 @@ with st.sidebar:
 if not st.session_state["autenticado"]:
   st.title(t["titulo"])
 
-  # Verificar utilizador pendente na base de dados
   if not st.session_state["aguardando_verificacao"]:
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
