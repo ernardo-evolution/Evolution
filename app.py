@@ -95,7 +95,6 @@ DICIONARIO = {
         "chat_ia": "Chat with AI Assistant",
         "pergunta_ia": "Type your management question:",
         "enviar": "Send Question",
-        "sign out": "Sign Out",
         "sair": "Sign Out",
         "empresa_setup": "Company Profile & Registration",
     },
@@ -144,7 +143,7 @@ if "produtos" not in st.session_state:
 if "empresa" not in st.session_state:
   st.session_state["empresa"] = {
       "nome": "Evolution Corp Brasil",
-      - "pais": "Brasil",
+      "pais": "Brasil",
       "pais_registro": "Brasil",
       "moeda": "BRL",
       "simbolo": "R$",
@@ -155,12 +154,10 @@ if "empresa" not in st.session_state:
 
 # --- FUNÇÃO DE FORMATAÇÃO MONETÁRIA SEGURA ---
 def formatar_moeda(valor, simbolo="R$"):
-  # Tratamento financeiro rigoroso com separadores e duas casas decimais
   try:
     v = float(valor)
   except:
     v = 0.0
-  # Padrão brasileiro/internacional adaptável: ex R$ 1.250,00
   if simbolo in ["R$", "$U", "ARS"]:
     return f"{simbolo} {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
   else:
@@ -169,7 +166,6 @@ def formatar_moeda(valor, simbolo="R$"):
 
 # --- FUNÇÃO DE CONVERSÃO CAMBIAL AUTOMÁTICA ---
 def converter_cambio(valor, moeda_origem, moeda_destino):
-  # Taxas de referência simuladas e atualizadas (com data/hora dinâmica)
   taxas = {
       "BRL": 1.0,
       "USD": 0.20,
@@ -292,101 +288,3 @@ else:
   elif menu == t["produtos"]:
     st.header(t["produtos"])
     nome_prod = st.text_input(t["nome_produto"])
-    
-    # Campo de preço dinâmico com a moeda ativa da empresa (Padrão R$)
-    preco_prod = st.number_input(
-        f"{t['preco_produto']} ({simbolo_ativo})", min_value=0.0, format="%.2f"
-    )
-
-    if st.button(t["salvar"]):
-      if nome_prod:
-        st.session_state["produtos"].append(
-            {
-                "nome": nome_prod,
-                "preco": preco_prod,
-                "moeda": emp["moeda"],
-                "simbolo": simbolo_ativo,
-            }
-        )
-        st.success(f"Produto '{nome_prod}' adicionado com sucesso!")
-      else:
-        st.warning("Insira o nome do produto.")
-
-    st.subheader(t["lista_produtos"])
-    for prod in st.session_state["produtos"]:
-      valor_formatado = formatar_moeda(prod["preco"], prod["simbolo"])
-      st.write(f"- **{prod['nome']}**: {valor_formatado}")
-
-  elif menu == t["config"]:
-    st.header(t["config"])
-    st.subheader(t["empresa_setup"])
-
-    # Formulário de Configurações Regionais e Internacionais
-    with st.form("form_empresa"):
-      novo_nome_empresa = st.text_input("Nome da Empresa", value=emp["nome"])
-      
-      # Seletor internacional de países
-      paises_lista = list(PAISES_MOEDAS.keys())
-      pais_atual_idx = paises_lista.index(emp["pais"]) if emp["pais"] in paises_lista else 0
-      
-      novo_pais = st.selectbox("País de Operação", paises_lista, index=pais_atual_idx)
-      novo_pais_registro = st.selectbox(
-          "País de Registo", paises_lista, index=paises_lista.index(emp["pais_registro"]) if emp["pais_registro"] in paises_lista else 0
-      )
-
-      # Configuração automática da moeda e símbolos associados ao país selecionado
-      info_pais = PAISES_MOEDAS[novo_pais]
-      nova_moeda = info_pais["moeda"]
-      novo_simbolo = info_pais["simbolo"]
-      novo_idioma = info_pais["idioma"]
-      novo_fuso = info_pais["fuso"]
-
-      st.info(f"💱 Moeda Oficial Associada: **{nova_moeda} ({novo_simbolo})** | Fuso: **{novo_fuso}**")
-
-      if st.form_submit_button(t["salvar"]):
-        st.session_state["empresa"] = {
-            "nome": novo_nome_empresa,
-            "pais": novo_pais,
-            "pais_registro": novo_pais_registro,
-            "moeda": nova_moeda,
-            "simbolo": novo_simbolo,
-            "idioma": novo_idioma,
-            "fuso": novo_fuso,
-        }
-        st.success("Configurações regionais e empresariais atualizadas com sucesso!")
-        st.rerun()
-
-    st.markdown("---")
-    st.subheader("💳 Métodos de Pagamento Regionais")
-    if emp["pais"] == "Brasil":
-      st.write("🟢 **PIX** (Ativado - Ambiente de Produção/Teste)")
-      st.write("🟢 **Boleto Bancário** (Ativado)")
-      st.write("🔵 **Cartões Nacionais e Internacionais**")
-    else:
-      st.write("🟢 **PayPal Internacional**")
-      st.write(f"🟢 **Transferência Bancária ({emp['moeda']})**")
-      st.write("🟢 **Cartões de Crédito Internacionais (Visa/Mastercard)**")
-
-    st.markdown("---")
-    st.subheader("💱 Conversor Cambial de Teste")
-    val_conv = st.number_input("Valor a converter", min_value=0.0, value=100.0, format="%.2f")
-    moeda_destino_teste = st.selectbox("Converter para", ["BRL", "USD", "EUR", "GBP", "JPY", "AOA", "MZN"])
-    if st.button("Simular Conversão"):
-      res_conv, data_hora = converter_cambio(val_conv, emp["moeda"], moeda_destino_teste)
-      st.success(
-          f"Valor Original: {formatar_moeda(val_conv, emp['simbolo'])} | Convertido ({moeda_destino_teste}): {formatar_moeda(res_conv, 'US$' if moeda_destino_teste=='USD' else '€' if moeda_destino_teste=='EUR' else 'R$')}"
-          f"\n\n🕒 Última atualização cambial: {data_hora}"
-      )
-
-  elif menu == t["ia"]:
-    st.header(t["chat_ia"])
-    pergunta = st.text_input(t["pergunta_ia"])
-    if st.button(t["enviar"]):
-      if pergunta:
-        st.info(
-            f"💡 **IA Evolution:** Analisando a sua questão sobre gestão multi-moeda ('{pergunta}'),"
-            f" com operações a partir de **{emp['pais']} ({emp['moeda']})**,"
-            " recomendo manter o controlo fiscal alinhado com as taxas de câmbio correntes."
-        )
-      else:
-        st.warning("Escreva uma pergunta.")
