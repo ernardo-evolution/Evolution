@@ -1,44 +1,17 @@
 from datetime import datetime, timedelta
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 import os
-import random
 import secrets
-import smtplib
 import sqlite3
 import streamlit as st
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
-    page_title="A Evolution Gestão Online",
-    page_icon="🚀",
-    layout="wide",
-    initial_sidebar_state="expanded",
+    page_title="A Evolution Gestão Online", page_icon="🚀", layout="wide"
 )
-
-# --- 2. ESTILIZAÇÃO VISUAL PROFISSIONAL (TEMA ESCURO GRAFITE) ---
-st.markdown("""
-    <style>
-    .stApp {
-        background-color: #0e1117;
-        color: #e2e8f0;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
-    h1, h2, h3 {
-        color: #f0f6fc;
-        font-weight: 600;
-        letter-spacing: -0.025em;
-    }
-    [data-testid="stSidebar"] {
-        background-color: #11151c;
-        border-right: 1px solid #21262d;
-    }
-    </style>
-""", unsafe_allow_html=True)
 
 DB_FILE = "evolution_gestao.db"
 
-# --- 3. INICIALIZAÇÃO SEGURA DA BASE DE DADOS ---
+# --- 2. INICIALIZAÇÃO SEGURA DA BASE DE DADOS ---
 try:
   conn = sqlite3.connect(DB_FILE)
   cursor = conn.cursor()
@@ -63,8 +36,6 @@ try:
             email TEXT,
             senha TEXT,
             nivel TEXT,
-            ativo INTEGER DEFAULT 0,
-            codigo_verificacao TEXT,
             session_token TEXT,
             token_expiry TEXT
         )
@@ -143,21 +114,28 @@ try:
     """)
 
   # Migrações seguras e isoladas
-  for col_def in [
-      ("produtos", "quantidade_estoque", "INTEGER DEFAULT 0"),
-      ("produtos", "estoque_minimo", "INTEGER DEFAULT 5"),
-      ("clientes", "pais", "TEXT"),
-      ("usuarios", "senha", "TEXT"),
-      ("usuarios", "ativo", "INTEGER DEFAULT 1"),
-      ("usuarios", "codigo_verificacao", "TEXT"),
-      ("usuarios", "session_token", "TEXT"),
-      ("usuarios", "token_expiry", "TEXT"),
-      ("empresa", "pais", "TEXT"),
-      ("empresa", "moeda", "TEXT"),
-      ("empresa", "simbolo", "TEXT"),
-  ]:
+  try:
+    cursor.execute(
+        "ALTER TABLE produtos ADD COLUMN quantidade_estoque INTEGER DEFAULT 0"
+    )
+  except:
+    pass
+
+  try:
+    cursor.execute(
+        "ALTER TABLE produtos ADD COLUMN estoque_minimo INTEGER DEFAULT 5"
+    )
+  except:
+    pass
+
+  try:
+    cursor.execute("ALTER TABLE clientes ADD COLUMN pais TEXT")
+  except:
+    pass
+
+  for col_nec in ["senha", "session_token", "token_expiry"]:
     try:
-      cursor.execute(f"ALTER TABLE {col_def[0]} ADD COLUMN {col_def[1]} {col_def[2]}")
+      cursor.execute(f"ALTER TABLE usuarios ADD COLUMN {col_nec} TEXT")
     except:
       pass
 
@@ -187,7 +165,7 @@ except Exception as db_err:
   st.stop()
 
 
-# --- 4. MAPEAMENTO DE PAÍSES E MOEDAS ---
+# --- 3. MAPEAMENTO DE PAÍSES E MOEDAS ---
 PAISES_MOEDAS = {
     "Brasil": {"moeda": "BRL", "simbolo": "R$", "idioma": "Português"},
     "Portugal": {"moeda": "EUR", "simbolo": "€", "idioma": "Português"},
@@ -197,11 +175,10 @@ PAISES_MOEDAS = {
         "idioma": "English",
     },
     "Espanha": {"moeda": "EUR", "simbolo": "€", "idioma": "Español"},
-    "Reino Unido": {"moeda": "GBP", "simbolo": "£", "idioma": "English"},
 }
 
 
-# --- 5. FUNÇÕES AUXILIARES E DE E-MAIL ---
+# --- 4. FUNÇÕES AUXILIARES ---
 def carregar_empresa():
   try:
     conn = sqlite3.connect(DB_FILE)
@@ -214,17 +191,16 @@ def carregar_empresa():
     conn.close()
     if row:
       return {
-          "nome": row[0] or "Evolution Corp",
-          "pais": row[1] or "Brasil",
-          "pais_registro": row[2] or "Brasil",
-          "moeda": row[3] or "BRL",
-          "simbolo": row[4] or "R$",
-          "idioma": row[5] or "Português",
-          "fuso": row[6] or "UTC-3",
+          "nome": row[0],
+          "pais": row[1],
+          "pais_registro": row[2],
+          "moeda": row[3],
+          "simbolo": row[4],
+          "idioma": row[5],
+          "fuso": row[6],
       }
-  except Exception as e:
-    print(f"Erro ao carregar empresa: {e}")
-  
+  except:
+    pass
   return {
       "nome": "Evolution Corp Brasil",
       "pais": "Brasil",
@@ -234,40 +210,6 @@ def carregar_empresa():
       "idioma": "Português",
       "fuso": "UTC-3",
   }
-
-
-def enviar_email_verificacao(destinatario, codigo):
-  smtp_servidor = "smtp.gmail.com"
-  smtp_porta = 587
-  remetente = st.secrets.get("EMAIL_REMETENTE", "teu_email@gmail.com")
-  senha_email = st.secrets.get("EMAIL_SENHA", "tua_senha_de_aplicacao")
-
-  if remetente == "teu_email@gmail.com":
-    return False
-
-  try:
-    msg = MIMEMultipart()
-    msg["From"] = remetente
-    msg["To"] = destinatario
-    msg["Subject"] = "Código de Verificação - A Evolution Gestão Online"
-
-    corpo = (
-        f"Olá!\n\nO seu código de verificação para ativar a conta no A"
-        f" Evolution Gestão Online é: {codigo}\n\nIntroduza este código na"
-        " página de confirmação para concluir o registo.\n\nEquipa de"
-        " Segurança"
-    )
-    msg.attach(MIMEText(corpo, "plain"))
-
-    server = smtplib.SMTP(smtp_servidor, smtp_porta)
-    server.starttls()
-    server.login(remetente, senha_email)
-    server.sendmail(remetente, destinatario, msg.as_string())
-    server.quit()
-    return True
-  except Exception as e:
-    print(f"Erro ao enviar e-mail: {e}")
-    return False
 
 
 def registrar_historico(usuario, acao, detalhes):
@@ -300,15 +242,13 @@ t = {
     "sair": "Terminar Sessão",
 }
 
-# --- 6. GESTÃO DE SESSÃO E PERSISTÊNCIA ---
+# --- 5. GESTÃO DE SESSÃO E PERSISTÊNCIA ---
 if "autenticado" not in st.session_state:
   st.session_state["autenticado"] = False
 if "usuario_atual" not in st.session_state:
   st.session_state["usuario_atual"] = ""
 if "nivel_acesso" not in st.session_state:
   st.session_state["nivel_acesso"] = ""
-if "aguardando_verificacao" not in st.session_state:
-  st.session_state["aguardando_verificacao"] = None
 
 # Verificar token persistente na URL
 try:
@@ -320,7 +260,7 @@ try:
     cursor = conn.cursor()
     cursor.execute(
         "SELECT nome, nivel, token_expiry FROM usuarios WHERE session_token ="
-        " ? AND ativo = 1",
+        " ?",
         (token_persistencia,),
     )
     user_data = cursor.fetchone()
@@ -351,20 +291,17 @@ def formatar_moeda(valor):
   )
 
 
-# --- 7. BARRA LATERAL REFINADA ---
+# --- 6. BARRA LATERAL ---
 menu = t["dashboard"]
 with st.sidebar:
-  st.markdown(f"### {emp['nome']}")
-  st.markdown("---")
   if st.session_state["autenticado"]:
-    st.markdown(
-        f"👤 **{st.session_state['usuario_atual']}**  \n🔑 Nível:"
-        f" `{st.session_state['nivel_acesso']}`"
+    st.info(
+        f"👤 Utilizador: **{st.session_state['usuario_atual']}**\n🔑 Nível:"
+        f" **{st.session_state['nivel_acesso']}**"
     )
     st.markdown("---")
-    
     menu = st.radio(
-        "Navegação Principal",
+        "Navegação",
         [
             t["dashboard"],
             t["clientes"],
@@ -376,10 +313,9 @@ with st.sidebar:
             t["tarefas"],
             t["config"],
         ],
-        label_visibility="collapsed",
     )
     st.markdown("---")
-    if st.button("Terminar Sessão", use_container_width=True):
+    if st.button(t["sair"]):
       if "session_token" in st.query_params:
         del st.query_params["session_token"]
       st.session_state["autenticado"] = False
@@ -388,178 +324,97 @@ with st.sidebar:
       st.success("Sessão encerrada.")
       st.rerun()
   else:
-    st.warning("⚠️ Efetue login para aceder ao sistema.")
+    st.warning("⚠️ Efetue login para aceder.")
 
 
-# --- 8. INTERFACE PRINCIPAL ---
+# --- 7. INTERFACE PRINCIPAL ---
 if not st.session_state["autenticado"]:
   st.title(t["titulo"])
+  tab_login, tab_registo = st.tabs(["🔑 Iniciar Sessão", "📝 Registar Conta"])
 
-  if st.session_state["aguardando_verificacao"]:
-    st.warning(
-        "🔒 Conta pendente de ativação. Enviámos um código de 6 dígitos para o"
-        f" seu e-mail: **{st.session_state['aguardando_verificacao']}**"
-    )
-    with st.form("form_verificar_codigo"):
-      codigo_inserido = st.text_input(
-          "Introduza o Código de Verificação", max_chars=6
-      )
-      btn_confirmar = st.form_submit_button("Confirmar e Ativar Conta")
+  with tab_login:
+    st.markdown("### Acesso Restrito ao Sistema")
+    with st.form("form_login_main"):
+      email_login = st.text_input("E-mail corporativo").strip()
+      lembrar_sessao = st.checkbox("Lembrar de mim neste dispositivo")
+      btn_entrar = st.form_submit_button("Entrar no Sistema")
 
-      if btn_confirmar:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id FROM usuarios WHERE email = ? AND codigo_verificacao = ?",
-            (
-                st.session_state["aguardando_verificacao"],
-                codigo_inserido.strip(),
-            ),
-        )
-        res = cursor.fetchone()
-        if res:
+      if btn_entrar:
+        if email_login:
+          conn = sqlite3.connect(DB_FILE)
+          cursor = conn.cursor()
           cursor.execute(
-              "UPDATE usuarios SET ativo = 1, codigo_verificacao = NULL WHERE"
-              " email = ?",
-              (st.session_state["aguardando_verificacao"],),
+              "SELECT id, nome, nivel FROM usuarios WHERE email = ?",
+              (email_login,),
           )
-          conn.commit()
-          conn.close()
-          st.success("Conta verificada e ativada com sucesso! Já pode fazer login.")
-          st.session_state["aguardando_verificacao"] = None
-          st.rerun()
-        else:
-          conn.close()
-          st.error("Código incorreto. Tente novamente.")
-  else:
-    tab_login, tab_registo = st.tabs(["🔑 Iniciar Sessão", "📝 Registar Conta"])
+          user = cursor.fetchone()
 
-    with tab_login:
-      st.markdown("### Acesso Restrito ao Sistema")
-      with st.form("form_login_main"):
-        email_login = st.text_input("E-mail corporativo").strip()
-        lembrar_sessao = st.checkbox("Lembrar de mim neste dispositivo")
-        btn_entrar = st.form_submit_button("Entrar no Sistema")
+          if user:
+            user_id, nome_u, nivel_u = user
+            st.session_state["autenticado"] = True
+            st.session_state["usuario_atual"] = nome_u
+            st.session_state["nivel_acesso"] = nivel_u
 
-        if btn_entrar:
-          if email_login:
-            conn = sqlite3.connect(DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT id, nome, nivel, ativo FROM usuarios WHERE email = ?",
-                (email_login,),
-            )
-            user = cursor.fetchone()
-
-            if user:
-              user_id, nome_u, nivel_u, ativo_u = user
-              if ativo_u == 0:
-                conn.close()
-                st.error(
-                    "Esta conta ainda não foi ativada por e-mail. Contacte o"
-                    " suporte."
-                )
-              else:
-                st.session_state["autenticado"] = True
-                st.session_state["usuario_atual"] = nome_u
-                st.session_state["nivel_acesso"] = nivel_u
-
-                if lembrar_sessao:
-                  token = secrets.token_hex(32)
-                  expiry = (datetime.now() + timedelta(days=30)).strftime(
-                      "%Y-%m-%d %H:%M:%S"
-                  )
-                  cursor.execute(
-                      "UPDATE usuarios SET session_token = ?, token_expiry ="
-                      " ? WHERE id = ?",
-                      (token, expiry, user_id),
-                  )
-                  conn.commit()
-                  st.query_params["session_token"] = token
-
-                conn.close()
-                st.success("Sessão iniciada!")
-                st.rerun()
-            else:
-              conn.close()
-              st.error(
-                  "Utilizador não encontrado. Crie uma conta na aba ao lado."
+            if lembrar_sessao:
+              token = secrets.token_hex(32)
+              expiry = (datetime.now() + timedelta(days=30)).strftime(
+                  "%Y-%m-%d %H:%M:%S"
               )
-          else:
-            st.warning("Introduza o seu e-mail.")
-
-    with tab_registo:
-      st.markdown("### Criar Nova Conta com Verificação Segura")
-      with st.form("form_reg_main"):
-        novo_nome = st.text_input("Nome Completo")
-        novo_email = st.text_input("E-mail Corporativo")
-        novo_nivel = st.selectbox(
-            "Nível de Acesso", ["Administrador", "Gerente", "Funcionário"]
-        )
-        if st.form_submit_button("Registar e Enviar Código"):
-          if novo_nome and novo_email:
-            conn = sqlite3.connect(DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT id FROM usuarios WHERE email = ?", (novo_email.strip(),)
-            )
-            existe = cursor.fetchone()
-            if existe:
-              st.error("Este e-mail já está registado.")
-              conn.close()
-            else:
-              codigo_verif = str(random.randint(100000, 999999))
               cursor.execute(
-                  "INSERT INTO usuarios (nome, email, nivel, ativo,"
-                  " codigo_verificacao) VALUES (?, ?, ?, 0, ?)",
-                  (
-                      novo_nome.strip(),
-                      novo_email.strip(),
-                      novo_nivel,
-                      codigo_verif,
-                  ),
+                  "UPDATE usuarios SET session_token = ?, token_expiry = ? WHERE"
+                  " id = ?",
+                  (token, expiry, user_id),
               )
               conn.commit()
-              conn.close()
+              st.query_params["session_token"] = token
 
-              enviou = enviar_email_verificacao(
-                  novo_email.strip(), codigo_verif
-              )
-              if enviou:
-                st.session_state["aguardando_verificacao"] = (
-                    novo_email.strip()
-                )
-                st.success(
-                    "Registo efetuado! Verifique o código enviado para o seu"
-                    " e-mail."
-                )
-                st.rerun()
-              else:
-                st.session_state["aguardando_verificacao"] = (
-                    novo_email.strip()
-                )
-                st.warning(
-                    "⚠️ SMTP não configurado. Para efeitos de teste, o seu"
-                    f" código de ativação é: **{codigo_verif}**"
-                )
-                st.rerun()
+            conn.close()
+            st.success("Sessão iniciada!")
+            st.rerun()
           else:
-            st.warning("Preencha todos os campos.")
+            conn.close()
+            st.error("Utilizador não encontrado. Crie uma conta na aba ao lado.")
+        else:
+          st.warning("Introduza o seu e-mail.")
+
+  with tab_registo:
+    st.markdown("### Criar Nova Conta")
+    with st.form("form_reg_main"):
+      novo_nome = st.text_input("Nome Completo")
+      novo_email = st.text_input("E-mail Corporativo")
+      novo_nivel = st.selectbox(
+          "Nível de Acesso", ["Administrador", "Gerente", "Funcionário"]
+      )
+      if st.form_submit_button("Registar Conta"):
+        if novo_nome and novo_email:
+          conn = sqlite3.connect(DB_FILE)
+          cursor = conn.cursor()
+          cursor.execute(
+              "SELECT id FROM usuarios WHERE email = ?", (novo_email.strip(),)
+          )
+          existe = cursor.fetchone()
+          if existe:
+            st.error("Este e-mail já está registado.")
+          else:
+            cursor.execute(
+                "INSERT INTO usuarios (nome, email, nivel) VALUES (?, ?, ?)",
+                (novo_nome.strip(), novo_email.strip(), novo_nivel),
+            )
+            conn.commit()
+            conn.close()
+            st.success("Conta criada com sucesso! Já pode iniciar sessão.")
+        else:
+          st.warning("Preencha todos os campos.")
 
 else:
-  # --- MÓDULO: DASHBOARD EXECUTIVO REFINADO ---
-  if menu == t["dashboard"]:
-    st.markdown("## 📊 Dashboard Executivo")
-    st.markdown(
-        f"Visão geral das operações, indicadores financeiros e alertas de"
-        f" desempenho para **{emp['nome']}**."
-    )
-    st.markdown("---")
+  st.title(t["titulo"])
 
+  # --- MÓDULO: DASHBOARD ---
+  if menu == t["dashboard"]:
+    st.header("📊 Dashboard Executivo e Operacional")
     try:
       conn = sqlite3.connect(DB_FILE)
       cursor = conn.cursor()
-      
       cursor.execute("SELECT SUM(valor_total) FROM vendas")
       faturamento = cursor.fetchone()[0] or 0.0
 
@@ -579,103 +434,15 @@ else:
           " estoque_minimo"
       )
       est_baixo = cursor.fetchone()[0] or 0
-
-      # Cartões de Métricas Executivas
-      c1, c2, c3, c4 = st.columns(4)
-      with c1:
-        st.metric("Faturamento Total", formatar_moeda(faturamento))
-      with c2:
-        st.metric("Pedidos Pendentes", ped_pend)
-      with c3:
-        st.metric("Em Processamento", ped_proc)
-      with c4:
-        st.metric("Estoque Baixo", est_baixo, delta_color="inverse")
-
-      st.markdown("---")
-
-      # Filtro de Período Real
-      col_f1, col_f2 = st.columns([2, 4])
-      with col_f1:
-        filtro_periodo = st.selectbox(
-            "Período de Análise",
-            ["Todos os Registos", "Últimos 30 Dias", "Últimos 7 Dias"],
-        )
-
-      st.markdown("### 📈 Tendência de Vendas")
-      cursor.execute("SELECT data_hora, valor_total FROM vendas ORDER BY id ASC")
-      vendas_raw = cursor.fetchall()
-
-      if vendas_raw:
-        import pandas as pd
-        df_vendas = pd.DataFrame(vendas_raw, columns=["data", "valor"])
-        try:
-          df_vendas["data_dt"] = pd.to_datetime(df_vendas["data"], format="%d/%m/%Y %H:%M:%S", errors="coerce")
-          df_vendas = df_vendas.dropna(subset=["data_dt"])
-          if filtro_periodo == "Últimos 7 Dias":
-            limite = datetime.now() - timedelta(days=7)
-            df_vendas = df_vendas[df_vendas["data_dt"] >= limite]
-          elif filtro_periodo == "Últimos 30 Dias":
-            limite = datetime.now() - timedelta(days=30)
-            df_vendas = df_vendas[df_vendas["data_dt"] >= limite]
-
-          if not df_vendas.empty:
-            df_grouped = df_vendas.groupby(df_vendas["data_dt"].dt.date)["valor"].sum().reset_index()
-            df_grouped.columns = ["Data", "Valor Total"]
-            df_grouped = df_grouped.set_index("Data")
-            st.line_chart(df_grouped)
-          else:
-            st.info("Nenhum registo de vendas encontrado para o período selecionado.")
-        except Exception:
-          st.info("A aguardar mais dados de transações para gerar o gráfico temporal.")
-      else:
-        st.info("Sem dados de vendas registados. Efetue vendas no módulo correspondente para gerar gráficos.")
-
-      st.markdown("---")
-
-      # Secções Inferiores Organizadas
-      col_sec1, col_sec2 = st.columns(2)
-
-      with col_sec1:
-        st.markdown("### 🛒 Vendas Recentes")
-        cursor.execute("SELECT cliente, produto, quantidade, valor_total, data_hora FROM vendas ORDER BY id DESC LIMIT 5")
-        vendas_recentes = cursor.fetchall()
-        if vendas_recentes:
-          for vr in vendas_recentes:
-            st.markdown(f"- **{vr[0]}** adquiriu {vr[2]}x *{vr[1]}* — **{formatar_moeda(vr[3])}** `[{vr[4]}]`")
-        else:
-          st.info("Nenhuma venda recente registada.")
-
-        st.markdown("### ⚠️ Alertas de Estoque Baixo")
-        cursor.execute("SELECT nome, quantidade_estoque, estoque_minimo FROM produtos WHERE quantidade_estoque <= estoque_minimo")
-        produtos_criticos = cursor.fetchall()
-        if produtos_criticos:
-          for pc in produtos_criticos:
-            st.markdown(f"- Produto **{pc[0]}** com stock crítico: **{pc[1]}** unidades (Mínimo: {pc[2]})")
-        else:
-          st.success("Todos os produtos estão com níveis de stock seguros.")
-
-      with col_sec2:
-        st.markdown("### 📋 Pedidos que Precisam de Atenção")
-        cursor.execute("SELECT id, cliente, produto, status_pedido FROM pedidos WHERE status_pedido != 'Concluído' LIMIT 5")
-        pedidos_atencao = cursor.fetchall()
-        if pedidos_atencao:
-          for pa in pedidos_atencao:
-            st.markdown(f"- **Pedido #{pa[0]}** ({pa[1]}) - Produto: {pa[2]} | Estado: `{pa[3]}`")
-        else:
-          st.success("Não existem pedidos pendentes de atenção.")
-
-        st.markdown("### 🕒 Atividades Recentes do Sistema")
-        cursor.execute("SELECT usuario, acao, detalhes, data_hora FROM historico ORDER BY id DESC LIMIT 5")
-        historico_recente = cursor.fetchall()
-        if historico_recente:
-          for hr in historico_recente:
-            st.text(f"[{hr[3]}] {hr[0]} -> {hr[1]}: {hr[2]}")
-        else:
-          st.info("Sem atividade recente registada no histórico.")
-
       conn.close()
+
+      c1, c2, c3, c4 = st.columns(4)
+      c1.metric("Faturamento Total", formatar_moeda(faturamento))
+      c2.metric("Pedidos Pendentes", ped_pend)
+      c3.metric("Em Processamento", ped_proc)
+      c4.metric("Estoque Baixo", est_baixo, delta_color="inverse")
     except Exception as e:
-      st.error(f"Erro ao carregar os dados do dashboard: {e}")
+      st.error(f"Erro ao carregar dashboard: {e}")
 
   # --- MÓDULO: CLIENTES ---
   elif menu == t["clientes"]:
@@ -824,10 +591,11 @@ else:
       prod_data = cursor.fetchall()
       conn.close()
 
-      if not cli_list:
-        st.warning("⚠️ Não existem clientes registados. Adicione clientes primeiro no menu 'Clientes'.")
-      elif not prod_data:
-        st.warning("⚠️ Não existem produtos com estoque disponível para venda. Adicione produtos ou reponha o estoque.")
+      if not cli_list or not prod_data:
+        st.warning(
+            "Necessita de ter clientes e produtos com estoque para efetuar"
+            " vendas."
+        )
       else:
         prod_dict = {p[0]: {"preco": p[1], "estoque": p[2]} for p in prod_data}
         with st.form("form_registar_venda"):
@@ -967,49 +735,46 @@ else:
   # --- MÓDULO: CONFIGURAÇÕES ---
   elif menu == t["config"]:
     st.header("⚙️ Configurações da Empresa e Moeda")
-    try:
-      with st.form("form_config"):
-        novo_nome_emp = st.text_input("Nome da Empresa", value=emp.get("nome", "Evolution Corp"))
+    with st.form("form_config"):
+      novo_nome_emp = st.text_input("Nome da Empresa", value=emp["nome"])
 
-        paises_disponiveis = list(PAISES_MOEDAS.keys())
-        pais_atual = emp.get("pais", "Brasil")
-        idx_pais = (
-            paises_disponiveis.index(pais_atual)
-            if pais_atual in paises_disponiveis
-            else 0
+      paises_disponiveis = list(PAISES_MOEDAS.keys())
+      pais_atual = emp.get("pais", "Brasil")
+      idx_pais = (
+          paises_disponiveis.index(pais_atual)
+          if pais_atual in paises_disponiveis
+          else 0
+      )
+
+      novo_pais = st.selectbox(
+          "País da Empresa", paises_disponiveis, index=idx_pais
+      )
+
+      moeda_preview = PAISES_MOEDAS[novo_pais]["moeda"]
+      simbolo_preview = PAISES_MOEDAS[novo_pais]["simbolo"]
+      st.info(
+          f"Moeda associada ao país escolhido: **{moeda_preview}**"
+          f" ({simbolo_preview})"
+      )
+
+      if st.form_submit_button("Atualizar Configurações"):
+        info_selecionada = PAISES_MOEDAS[novo_pais]
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE empresa SET nome = ?, pais = ?, moeda = ?, simbolo = ? WHERE"
+            " id = 1",
+            (
+                novo_nome_emp,
+                novo_pais,
+                info_selecionada["moeda"],
+                info_selecionada["simbolo"],
+            ),
         )
-
-        novo_pais = st.selectbox(
-            "País da Empresa", paises_disponiveis, index=idx_pais
+        conn.commit()
+        conn.close()
+        st.success(
+            "Configurações atualizadas com sucesso! Símbolo alterado para"
+            f" {info_selecionada['simbolo']}."
         )
-
-        moeda_preview = PAISES_MOEDAS[novo_pais]["moeda"]
-        simbolo_preview = PAISES_MOEDAS[novo_pais]["simbolo"]
-        st.info(
-            f"Moeda associada ao país escolhido: **{moeda_preview}**"
-            f" ({simbolo_preview})"
-        )
-
-        if st.form_submit_button("Atualizar Configurações"):
-          info_selecionada = PAISES_MOEDAS[novo_pais]
-          conn = sqlite3.connect(DB_FILE)
-          cursor = conn.cursor()
-          cursor.execute(
-              "UPDATE empresa SET nome = ?, pais = ?, moeda = ?, simbolo = ? WHERE"
-              " id = 1",
-              (
-                  novo_nome_emp,
-                  novo_pais,
-                  info_selecionada["moeda"],
-                  info_selecionada["simbolo"],
-              ),
-          )
-          conn.commit()
-          conn.close()
-          st.success(
-              "Configurações atualizadas com sucesso! Símbolo alterado para"
-              f" {info_selecionada['simbolo']}."
-          )
-          st.rerun()
-    except Exception as e:
-      st.error(f"Erro ao carregar as configurações: {e}")
+        st.rerun()
