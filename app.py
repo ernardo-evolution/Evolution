@@ -24,7 +24,7 @@ DB_FILE = "evolution_gestao.db"
 def init_db():
   conn = sqlite3.connect(DB_FILE)
   cursor = conn.cursor()
-  # Tabela Empresa
+  # Tabela Empresa com campos completos
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS empresa (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,11 +37,14 @@ def init_db():
             fuso TEXT
         )
     """)
-  # Tabela Clientes
+  # Tabela Clientes com cadastro detalhado (Nome, E-mail, Telefone, País)
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS clientes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT
+            nome TEXT,
+            email TEXT,
+            telefone TEXT,
+            pais TEXT
         )
     """)
   # Tabela Produtos
@@ -69,7 +72,7 @@ def init_db():
         )
     """)
   conn.commit()
-  
+
   # Inserir empresa padrão se a tabela estiver vazia
   cursor.execute("SELECT COUNT(*) FROM empresa")
   if cursor.fetchone()[0] == 0:
@@ -186,10 +189,13 @@ DICIONARIO = {
         "sucesso_envio": "Code successfully sent to the inbox!",
         "sucesso_verif": "Access granted successfully!",
         "erro_verif": "Incorrect code. Try again.",
-        "add_cliente": "Add New Client",
+        "add_cliente": "Register New Client",
         "nome_cliente": "Client Name",
+        "email_cliente": "Email Address",
+        "tel_cliente": "Phone Number",
+        "pais_cliente": "Client Country",
         "salvar": "Save Changes",
-        "lista_clientes": "Registered Clients",
+        "lista_clientes": "Registered Clients Directory",
         "add_produto": "Add New Product",
         "nome_produto": "Product Name",
         "preco_produto": "Price",
@@ -221,10 +227,13 @@ DICIONARIO = {
         "sucesso_envio": "¡Código enviado con éxito a la bandeja de entrada!",
         "sucesso_verif": "¡Acceso autorizado com éxito!",
         "erro_verif": "Código incorrecto. Inténtelo de nuevo.",
-        "add_cliente": "Añadir Nuevo Cliente",
+        "add_cliente": "Registrar Nuevo Cliente",
         "nome_cliente": "Nombre del Cliente",
+        "email_cliente": "Correo Electrónico",
+        "tel_cliente": "Teléfono",
+        "pais_cliente": "País del Cliente",
         "salvar": "Guardar Cambios",
-        "lista_clientes": "Clientes Registrados",
+        "lista_clientes": "Directorio de Clientes Registrados",
         "add_produto": "Añadir Nuevo Producto",
         "nome_produto": "Nombre del Producto",
         "preco_produto": "Precio",
@@ -256,10 +265,13 @@ DICIONARIO = {
         "sucesso_envio": "Código enviado com sucesso para a caixa de entrada!",
         "sucesso_verif": "Acesso autorizado com sucesso!",
         "erro_verif": "Código incorreto. Tente novamente.",
-        "add_cliente": "Adicionar Novo Cliente",
+        "add_cliente": "Registar Novo Cliente",
         "nome_cliente": "Nome do Cliente",
+        "email_cliente": "Endereço de E-mail",
+        "tel_cliente": "Número de Telefone",
+        "pais_cliente": "País do Cliente",
         "salvar": "Guardar Alterações",
-        "lista_clientes": "Clientes Registados",
+        "lista_clientes": "Diretório de Clientes Registados",
         "add_produto": "Adicionar Novo Produto",
         "nome_produto": "Nome do Produto",
         "preco_produto": "Preço",
@@ -282,8 +294,12 @@ if "autenticado" not in st.session_state:
 if "codigo_enviado" not in st.session_state:
   st.session_state["codigo_enviado"] = ""
 
-# --- FUNÇÃO DE FORMATAÇÃO MONETÁRIA SEGURA ---
-def formatar_moeda(valor, simbolo="R$"):
+# --- CARREGAR DADOS GLOBAIS DA EMPRESA (COM SUPORTE REATIVO) ---
+emp = carregar_empresa()
+simbolo_ativo = emp["simbolo"]
+
+# --- FUNÇÃO DE FORMATAÇÃO MONETÁRIA REATIVA GLOBAL ---
+def formatar_moeda(valor, simbolo=simbolo_ativo):
   try:
     v = float(valor)
   except:
@@ -322,7 +338,6 @@ with st.sidebar:
   if st.session_state["autenticado"]:
     st.markdown("---")
     
-    # Lista de opções do menu principal em ordem alfabética estrita
     opcoes_nao_ordenadas = [
         t["ia"],
         t["clientes"],
@@ -334,6 +349,8 @@ with st.sidebar:
     opcoes_menu = sorted(opcoes_nao_ordenadas)
 
     menu = st.radio(t["menu"], opcoes_menu)
+    st.markdown("---")
+    st.info(f"📍 País: **{emp['pais']}**\n\n💱 Moeda: **{emp['moeda']} ({emp['simbolo']})**")
     st.markdown("---")
     if st.button(t["sair"]):
       st.session_state["autenticado"] = False
@@ -406,55 +423,74 @@ if not st.session_state["autenticado"]:
 # --- APLICAÇÃO PRINCIPAL MULTINACIONAL (SÓ ABRE APÓS AUTENTICAÇÃO) ---
 else:
   st.title(t["titulo"])
-  emp = carregar_empresa()
-  simbolo_ativo = emp["simbolo"]
 
   if menu == t["clientes"]:
     st.header(t["clientes"])
-    nome_cli = st.text_input(t["nome_cliente"])
-    if st.button(t["salvar"]):
-      if nome_cli:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO clientes (nome) VALUES (?)", (nome_cli,))
-        conn.commit()
-        conn.close()
-        st.success(f"Cliente '{nome_cli}' adicionado com sucesso!")
-        st.rerun()
-      else:
-        st.warning("O nome não pode estar vazio.")
+    
+    # Formulário de Cadastro Completo de Clientes
+    with st.form("form_cliente"):
+      st.subheader(t["add_cliente"])
+      nome_cli = st.text_input(t["nome_cliente"])
+      email_cli = st.text_input(t["email_cliente"])
+      tel_cli = st.text_input(t["tel_cliente"])
+      
+      paises_lista = sorted(list(PAISES_MOEDAS.keys()))
+      pais_cli = st.selectbox(t["pais_cliente"], paises_lista)
 
+      if st.form_submit_button(t["salvar"]):
+        if nome_cli:
+          conn = sqlite3.connect(DB_FILE)
+          cursor = conn.cursor()
+          cursor.execute(
+              "INSERT INTO clientes (nome, email, telefone, pais) VALUES (?,"
+              " ?, ?, ?)",
+              (nome_cli, email_cli, tel_cli, pais_cli),
+          )
+          conn.commit()
+          conn.close()
+          st.success(f"Cliente '{nome_cli}' registado com sucesso!")
+          st.rerun()
+        else:
+          st.warning("O nome do cliente é obrigatório.")
+
+    st.markdown("---")
     st.subheader(t["lista_clientes"])
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT nome FROM clientes")
+    cursor.execute("SELECT nome, email, telefone, pais FROM clientes")
     clientes_db = cursor.fetchall()
     conn.close()
-    for cli in clientes_db:
-      st.write(f"- {cli[0]}")
+
+    for c in clientes_db:
+      st.write(
+          f"👤 **{c[0]}** | 📧 {c[1] or 'N/A'} | 📞 {c[2] or 'N/A'} | 🌍 País: {c[3]}"
+      )
 
   elif menu == t["produtos"]:
     st.header(t["produtos"])
-    nome_prod = st.text_input(t["nome_produto"])
-    preco_prod = st.number_input(
-        f"{t['preco_produto']} ({simbolo_ativo})", min_value=0.0, format="%.2f"
-    )
+    
+    with st.form("form_produto"):
+      st.subheader(t["add_produto"])
+      nome_prod = st.text_input(t["nome_produto"])
+      preco_prod = st.number_input(
+          f"{t['preco_produto']} ({simbolo_ativo})", min_value=0.0, format="%.2f"
+      )
 
-    if st.button(t["salvar"]):
-      if nome_prod:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO produtos (nome, preco, moeda, simbolo) VALUES (?, ?,"
-            " ?, ?)",
-            (nome_prod, preco_prod, emp["moeda"], simbolo_ativo),
-        )
-        conn.commit()
-        conn.close()
-        st.success(f"Produto '{nome_prod}' adicionado com sucesso!")
-        st.rerun()
-      else:
-        st.warning("Insira o nome do produto.")
+      if st.form_submit_button(t["salvar"]):
+        if nome_prod:
+          conn = sqlite3.connect(DB_FILE)
+          cursor = conn.cursor()
+          cursor.execute(
+              "INSERT INTO produtos (nome, preco, moeda, simbolo) VALUES (?, ?,"
+              " ?, ?)",
+              (nome_prod, preco_prod, emp["moeda"], simbolo_ativo),
+          )
+          conn.commit()
+          conn.close()
+          st.success(f"Produto '{nome_prod}' adicionado com sucesso!")
+          st.rerun()
+        else:
+          st.warning("Insira o nome do produto.")
 
     st.subheader(t["lista_produtos"])
     conn = sqlite3.connect(DB_FILE)
@@ -463,7 +499,7 @@ else:
     produtos_db = cursor.fetchall()
     conn.close()
     for prod in produtos_db:
-      valor_formatado = formatar_moeda(prod[1], prod[2])
+      valor_formatado = formatar_moeda(prod[1], simbolo_ativo)
       st.write(f"- **{prod[0]}**: {valor_formatado}")
 
   elif menu == t["vendas"]:
@@ -487,7 +523,6 @@ else:
         )
         qtd = st.number_input(t["qtd"], min_value=1, value=1, step=1)
         
-        # Obter preço unitário do produto selecionado
         preco_unit = 0.0
         for p in produtos_list:
           if p[0] == prod_selecionado:
@@ -518,7 +553,7 @@ else:
           )
           conn.commit()
           conn.close()
-          st.success("Venda registada com sucesso com preservação histórica!")
+          st.success("Venda registada com sucesso!")
           st.rerun()
 
     st.markdown("---")
@@ -533,11 +568,10 @@ else:
     conn.close()
 
     for v in vendas_db:
-      simb_venda = "R$" if v[4] == "BRL" else ("€" if v[4] == "EUR" else "US$" if v[4] == "USD" else v[4])
-      v_formatado = formatar_moeda(v[3], simb_venda)
+      v_formatado = formatar_moeda(v[3], simbolo_ativo)
       st.write(
           f"📅 {v[5]} | **{v[0]}** comprou {v[2]}x *{v[1]}* — Total:"
-          f" **{v_formatado}** ({v[4]})"
+          f" **{v_formatado}** ({emp['moeda']})"
       )
 
   elif menu == t["dashboard"]:
@@ -545,8 +579,10 @@ else:
     
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT SUM(valor_total), moeda_original FROM vendas GROUP BY moeda_original")
-    totais = cursor.fetchall()
+    cursor.execute("SELECT SUM(valor_total) FROM vendas")
+    res_soma = cursor.fetchone()[0]
+    total_faturamento = res_soma if res_soma else 0.0
+    
     cursor.execute("SELECT COUNT(*) FROM vendas")
     total_transacoes = cursor.fetchone()[0]
     conn.close()
@@ -555,31 +591,15 @@ else:
     with col_a:
       st.metric("Total de Transações", total_transacoes)
     with col_b:
-      faturamento_str = "Nenhum registo"
-      if totais:
-        faturamento_str = " | ".join([f"{formatar_moeda(t[0], 'R$' if t[1]=='BRL' else '€' if t[1]=='EUR' else 'US$')} ({t[1]})" for t in totais])
-      st.metric(t["total_venda"], faturamento_str)
+      st.metric(t["total_venda"], formatar_moeda(total_faturamento, simbolo_ativo))
 
     st.markdown("---")
-    st.subheader("🌐 Relatório Consolidado (Moeda-Base: BRL)")
+    st.subheader("🌐 Relatório Consolidado Global")
     st.info(
-        "As vendas realizadas em outras moedas são convertidas para a moeda-base"
-        " consolidada respeitando o câmbio oficial da data."
+        f"Operações ativas sob a jurisdição de **{emp['pais']}** | Moeda Padrão:"
+        f" **{emp['moeda']} ({simbolo_ativo})**"
     )
-    
-    # Exemplo de relatório consolidado simulado com base no banco
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT valor_total, moeda_original FROM vendas")
-    todas_vendas = cursor.fetchall()
-    conn.close()
-
-    total_brl_consolidado = 0.0
-    for v_val, v_moeda in todas_vendas:
-      conv, _ = converter_cambio(v_val, v_moeda, "BRL")
-      total_brl_consolidado += conv
-
-    st.success(f"Faturamento Consolidado Global em BRL: **{formatar_moeda(total_brl_consolidado, 'R$')}**")
+    st.success(f"Faturamento Consolidado Global: **{formatar_moeda(total_faturamento, simbolo_ativo)}**")
 
   elif menu == t["config"]:
     st.header(t["config"])
@@ -615,7 +635,7 @@ else:
             "fuso": novo_fuso,
         }
         salvar_empresa_db(dados_atualizados)
-        st.success("Configurações regionais guardadas permanentemente na base de dados!")
+        st.success("Configurações atualizadas! O site inteiro foi atualizado para a nova moeda.")
         st.rerun()
 
     st.markdown("---")
@@ -630,7 +650,7 @@ else:
       st.write("🟢 **Cartões de Crédito Internacionais (Visa/Mastercard)**")
 
     st.markdown("---")
-    st.subheader("💱 Conversor Cambial de Teste & Verificação Financeira")
+    st.subheader("💱 Conversor Cambial de Teste")
     val_conv = st.number_input("Valor a converter", min_value=0.0, value=100.0, format="%.2f")
     moeda_destino_teste = st.selectbox("Converter para", sorted(["BRL", "USD", "EUR", "GBP", "JPY", "AOA", "MZN"]))
     if st.button("Simular Conversão"):
