@@ -185,7 +185,6 @@ def converter_cambio(valor, moeda_origem, moeda_destino):
 
 # --- SELETOR DE IDIOMA E NAVEGAÇÃO NA BARRA LATERAL (EM ORDEM ALFABÉTICA) ---
 with st.sidebar:
-  # Idiomas ordenados alfabeticamente: English, Español, Português
   idiomas_ordenados = sorted(list(DICIONARIO.keys()))
   idioma_atual = st.selectbox("Idioma / Language", idiomas_ordenados)
   t = DICIONARIO[idioma_atual]
@@ -193,16 +192,8 @@ with st.sidebar:
   if st.session_state["autenticado"]:
     st.markdown("---")
     
-    # Itens do menu ordenados estritamente em ordem alfabética para cada idioma
-    if idioma_atual == "English":
-      opcoes_menu = [t["ia"], t["clientes"], t["config"], t["produtos"]]
-    elif idioma_atual == "Español":
-      opcoes_menu = [t["ia"], t["clientes"], t["config"], t["produtos"]]
-    else:  # Português
-      opcoes_menu = [t["ia"], t["clientes"], t["config"], t["produtos"]]
-    
-    # Ordenar alfabeticamente por nome da opção
-    opcoes_menu = sorted(opcoes_menu)
+    opcoes_nao_ordenadas = [t["ia"], t["clientes"], t["config"], t["produtos"]]
+    opcoes_menu = sorted(opcoes_nao_ordenadas)
 
     menu = st.radio(t["menu"], opcoes_menu)
     st.markdown("---")
@@ -227,114 +218,3 @@ def disparar_emailjs(email_destino, codigo):
   }
   try:
     resposta = requests.post(EMAILJS_URL, json=payload)
-    return resposta.status_code == 200
-  except:
-    return False
-
-
-# --- BLOCO DE SEGURANÇA / LOGIN (DUAS COLUNAS COM VETOR CORPORATIVO E SEM LEGENDA) ---
-if not st.session_state["autenticado"]:
-  st.title(t["titulo"])
-  st.markdown("### Acesso Restrito - Validação por E-mail")
-
-  col1, col2 = st.columns([1, 1], gap="large")
-
-  with col1:
-    st.markdown("#### Entrar no Sistema")
-    email_input = st.text_input(t["email_label"])
-
-    if st.button(t["enviar_codigo"], use_container_width=True):
-      if email_input:
-        novo_codigo = str(random.randint(100000, 999999))
-        st.session_state["codigo_enviado"] = novo_codigo
-
-        sucesso = disparar_emailjs(email_input, novo_codigo)
-        if sucesso:
-          st.success(t["sucesso_envio"])
-        else:
-          st.error("Erro ao comunicar com o EmailJS.")
-      else:
-        st.warning("Insira um e-mail válido.")
-
-    if st.session_state["codigo_enviado"]:
-      codigo_digitado = st.text_input(
-          t["codigo_label"], type="password", max_chars=6
-      )
-      if st.button(t["verificar"], use_container_width=True):
-        if codigo_digitado == st.session_state["codigo_enviado"]:
-          st.session_state["autenticado"] = True
-          st.success(t["sucesso_verif"])
-          st.rerun()
-        else:
-          st.error(t["erro_verif"])
-
-  with col2:
-    st.image(
-        "https://img.freepik.com/free-vector/business-team-brainstorming-discussing-startup-project_74855-6908.jpg",
-        use_column_width=True,
-    )
-
-# --- APLICAÇÃO PRINCIPAL MULTINACIONAL (SÓ ABRE APÓS AUTENTICAÇÃO) ---
-else:
-  st.title(t["titulo"])
-  emp = st.session_state["empresa"]
-  simbolo_ativo = emp["simbolo"]
-
-  if menu == t["clientes"]:
-    st.header(t["clientes"])
-    nome_cli = st.text_input(t["nome_cliente"])
-    if st.button(t["salvar"]):
-      if nome_cli:
-        st.session_state["clientes"].append(nome_cli)
-        st.success(f"Cliente '{nome_cli}' adicionado com sucesso!")
-      else:
-        st.warning("O nome não pode estar vazio.")
-
-    st.subheader(t["lista_clientes"])
-    for cli in st.session_state["clientes"]:
-      st.write(f"- {cli}")
-
-  elif menu == t["produtos"]:
-    st.header(t["produtos"])
-    nome_prod = st.text_input(t["nome_produto"])
-    
-    preco_prod = st.number_input(
-        f"{t['preco_produto']} ({simbolo_ativo})", min_value=0.0, format="%.2f"
-    )
-
-    if st.button(t["salvar"]):
-      if nome_prod:
-        st.session_state["produtos"].append(
-            {
-                "nome": nome_prod,
-                "preco": preco_prod,
-                "moeda": emp["moeda"],
-                "simbolo": simbolo_ativo,
-            }
-        )
-        st.success(f"Produto '{nome_prod}' adicionado com sucesso!")
-      else:
-        st.warning("Insira o nome do produto.")
-
-    st.subheader(t["lista_produtos"])
-    for prod in st.session_state["produtos"]:
-      valor_formatado = formatar_moeda(prod["preco"], prod["simbolo"])
-      st.write(f"- **{prod['nome']}**: {valor_formatado}")
-
-  elif menu == t["config"]:
-    st.header(t["config"])
-    st.subheader(t["empresa_setup"])
-
-    with st.form("form_empresa"):
-      novo_nome_empresa = st.text_input("Nome da Empresa", value=emp["nome"])
-      
-      paises_lista = sorted(list(PAISES_MOEDAS.keys()))
-      pais_atual_idx = paises_lista.index(emp["pais"]) if emp["pais"] in paises_lista else 0
-      
-      novo_pais = st.selectbox("País de Operação", paises_lista, index=pais_atual_idx)
-      novo_pais_registro = st.selectbox(
-          "País de Registo", paises_lista, index=paises_lista.index(emp["pais_registro"]) if emp["pais_registro"] in paises_lista else 0
-      )
-
-      info_pais = PAISES_MOEDAS[novo_pais]
-      nova_moeda =
