@@ -22,94 +22,100 @@ DB_FILE = "evolution_gestao.db"
 
 
 def init_db():
-  conn = sqlite3.connect(DB_FILE)
-  cursor = conn.cursor()
-  cursor.execute("""
-        CREATE TABLE IF NOT EXISTS empresa (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT,
-            pais TEXT,
-            pais_registro TEXT,
-            moeda TEXT,
-            simbolo TEXT,
-            idioma TEXT,
-            fuso TEXT
-        )
-    """)
-  cursor.execute("""
-        CREATE TABLE IF NOT EXISTS clientes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT,
-            email TEXT,
-            telefone TEXT,
-            pais TEXT
-        )
-    """)
-  cursor.execute("""
-        CREATE TABLE IF NOT EXISTS produtos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT,
-            preco REAL,
-            moeda TEXT,
-            simbolo TEXT
-        )
-    """)
-  cursor.execute("""
-        CREATE TABLE IF NOT EXISTS vendas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            cliente TEXT,
-            produto TEXT,
-            quantidade INTEGER,
-            valor_unitario REAL,
-            valor_total REAL,
-            moeda_original TEXT,
-            taxa_aplicada TEXT,
-            data_hora TEXT
-        )
-    """)
-  conn.commit()
-
-  cursor.execute("SELECT COUNT(*) FROM empresa")
-  if cursor.fetchone()[0] == 0:
-    cursor.execute(
-        "INSERT INTO empresa (nome, pais, pais_registro, moeda, simbolo, idioma,"
-        " fuso) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (
-            "Evolution Corp Brasil",
-            "Brasil",
-            "Brasil",
-            "BRL",
-            "R$",
-            "Português",
-            "UTC-3",
-        ),
-    )
+  try:
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+            CREATE TABLE IF NOT EXISTS empresa (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT,
+                pais TEXT,
+                pais_registro TEXT,
+                moeda TEXT,
+                simbolo TEXT,
+                idioma TEXT,
+                fuso TEXT
+            )
+        """)
+    cursor.execute("""
+            CREATE TABLE IF NOT EXISTS clientes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT,
+                email TEXT,
+                telefone TEXT,
+                pais TEXT
+            )
+        """)
+    cursor.execute("""
+            CREATE TABLE IF NOT EXISTS produtos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT,
+                preco REAL,
+                moeda TEXT,
+                simbolo TEXT
+            )
+        """)
+    cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vendas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cliente TEXT,
+                produto TEXT,
+                quantidade INTEGER,
+                valor_unitario REAL,
+                valor_total REAL,
+                moeda_original TEXT,
+                taxa_aplicada TEXT,
+                data_hora TEXT
+            )
+        """)
     conn.commit()
-  conn.close()
+
+    cursor.execute("SELECT COUNT(*) FROM empresa")
+    if cursor.fetchone()[0] == 0:
+      cursor.execute(
+          "INSERT INTO empresa (nome, pais, pais_registro, moeda, simbolo,"
+          " idioma, fuso) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          (
+              "Evolution Corp Brasil",
+              "Brasil",
+              "Brasil",
+              "BRL",
+              "R$",
+              "Português",
+              "UTC-3",
+          ),
+      )
+      conn.commit()
+    conn.close()
+  except Exception as e:
+    st.error(f"Erro ao inicializar a base de dados: {e}")
 
 
 init_db()
 
 
 def carregar_empresa():
-  conn = sqlite3.connect(DB_FILE)
-  cursor = conn.cursor()
-  cursor.execute(
-      "SELECT nome, pais, pais_registro, moeda, simbolo, idioma, fuso FROM"
-      " empresa LIMIT 1"
-  )
-  row = cursor.fetchone()
-  conn.close()
-  if row:
-    return {
-        "nome": row[0],
-        "pais": row[1],
-        "pais_registro": row[2],
-        "moeda": row[3],
-        "simbolo": row[4],
-        "idioma": row[5],
-        "fuso": row[6],
-    }
+  try:
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT nome, pais, pais_registro, moeda, simbolo, idioma, fuso FROM"
+        " empresa LIMIT 1"
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+      return {
+          "nome": row[0],
+          "pais": row[1],
+          "pais_registro": row[2],
+          "moeda": row[3],
+          "simbolo": row[4],
+          "idioma": row[5],
+          "fuso": row[6],
+      }
+  except:
+    pass
   return {
       "nome": "Evolution Corp Brasil",
       "pais": "Brasil",
@@ -237,19 +243,3 @@ DICIONARIO = {
         "nome_cliente": "Kundenname",
         "email_cliente": "E-Mail-Adresse",
         "tel_cliente": "Telefonnummer",
-        "pais_cliente": "Kundenland",
-        "salvar": "Änderungen speichern",
-        "lista_clientes": "Registriertes Kundenverzeichnis",
-        "add_produto": "Neues Produkt hinzufügen",
-        "nome_produto": "Produktname",
-        "preco_produto": "Preis",
-        "lista_produtos": "Produkte auf Lager",
-        "reg_venda": "Verkauf registrieren",
-        "qtd": "Menge",
-        "total_venda": "Gesamtverkäufe",
-        "historico_vendas": "Verlauf der Verkäufe",
-        "chat_ia": "Chat mit KI-Assistent",
-        "pergunta_ia": "Geben Sie Ihre Managementfrage ein:",
-        "enviar": "Frage senden",
-        "sair": "Abmelden",
-        "
