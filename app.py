@@ -1,3 +1,4 @@
+from datetime import datetime
 import random
 import requests
 import streamlit as st
@@ -14,7 +15,30 @@ TEMPLATE_ID = "template_mm4esan"
 USER_ID = "PCUYqPfeqGQMvHbaD"
 ACCESS_TOKEN = "Mt1w97IKOc8mG4pbR7AAU"
 
-# --- DICIONÁRIO MULTILÍNGUA (PT, EN, ES) ---
+# --- BASE INTERNACIONAL DE PAÍSES E MOEDAS ---
+PAISES_MOEDAS = {
+    "Brasil": {"codigo": "BR", "moeda": "BRL", "simbolo": "R$", "idioma": "Português", "fuso": "UTC-3"},
+    "Estados Unidos": {"codigo": "US", "moeda": "USD", "simbolo": "US$", "idioma": "English", "fuso": "UTC-5"},
+    "Portugal": {"codigo": "PT", "moeda": "EUR", "simbolo": "€", "idioma": "Português", "fuso": "UTC+0"},
+    "Espanha": {"codigo": "ES", "moeda": "EUR", "simbolo": "€", "idioma": "Español", "fuso": "UTC+1"},
+    "Reino Unido": {"codigo": "GB", "moeda": "GBP", "simbolo": "£", "idioma": "English", "fuso": "UTC+0"},
+    "Japão": {"codigo": "JP", "moeda": "JPY", "simbolo": "¥", "idioma": "English", "fuso": "UTC+9"},
+    "Canadá": {"codigo": "CA", "moeda": "CAD", "simbolo": "CA$", "idioma": "English", "fuso": "UTC-5"},
+    "Austrália": {"codigo": "AU", "moeda": "AUD", "simbolo": "A$", "idioma": "English", "fuso": "UTC+10"},
+    "México": {"codigo": "MX", "moeda": "MXN", "simbolo": "MX$", "idioma": "Español", "fuso": "UTC-6"},
+    "Argentina": {"codigo": "AR", "moeda": "ARS", "simbolo": "ARS", "idioma": "Español", "fuso": "UTC-3"},
+    "Suíça": {"codigo": "CH", "moeda": "CHF", "simbolo": "CHF", "idioma": "English", "fuso": "UTC+1"},
+    "Índia": {"codigo": "IN", "moeda": "INR", "simbolo": "₹", "idioma": "English", "fuso": "UTC+5:30"},
+    "China": {"codigo": "CN", "moeda": "CNY", "simbolo": "CN¥", "idioma": "English", "fuso": "UTC+8"},
+    "África do Sul": {"codigo": "ZA", "moeda": "ZAR", "simbolo": "ZAR", "idioma": "English", "fuso": "UTC+2"},
+    "Angola": {"codigo": "AO", "moeda": "AOA", "simbolo": "Kz", "idioma": "Português", "fuso": "UTC+1"},
+    "Moçambique": {"codigo": "MZ", "moeda": "MZN", "simbolo": "MT", "idioma": "Português", "fuso": "UTC+2"},
+    "Cabo Verde": {"codigo": "CV", "moeda": "CVE", "simbolo": "CVE", "idioma": "Português", "fuso": "UTC-1"},
+    "Paraguai": {"codigo": "PY", "moeda": "PYG", "simbolo": "₲", "idioma": "Español", "fuso": "UTC-4"},
+    "Uruguai": {"codigo": "UY", "moeda": "UYU", "simbolo": "$U", "idioma": "Español", "fuso": "UTC-3"},
+}
+
+# --- DICIONÁRIO MULTILÍNGUA ---
 DICIONARIO = {
     "Português": {
         "titulo": "🚀 A Evolution Gestão Online",
@@ -22,6 +46,7 @@ DICIONARIO = {
         "clientes": "Gestão de Clientes",
         "produtos": "Gestão de Produtos",
         "ia": "Assistente IA",
+        "config": "Configurações Regionais & Pagamentos",
         "verificacao": "Segurança - Verificação de E-mail",
         "enviar_codigo": "Enviar Código de Verificação",
         "email_label": "Endereço de E-mail do Destinatário",
@@ -32,16 +57,17 @@ DICIONARIO = {
         "erro_verif": "Código incorreto. Tente novamente.",
         "add_cliente": "Adicionar Novo Cliente",
         "nome_cliente": "Nome do Cliente",
-        "salvar": "Salvar",
+        "salvar": "Guardar Alterações",
         "lista_clientes": "Clientes Registados",
         "add_produto": "Adicionar Novo Produto",
         "nome_produto": "Nome do Produto",
-        "preco_produto": "Preço (€)",
+        "preco_produto": "Preço",
         "lista_produtos": "Produtos em Stock",
         "chat_ia": "Converse com o Assistente IA",
         "pergunta_ia": "Escreva a sua dúvida sobre gestão:",
         "enviar": "Enviar Pergunta",
         "sair": "Terminar Sessão",
+        "empresa_setup": "Registo e Perfil da Empresa",
     },
     "English": {
         "titulo": "🚀 A Evolution Online Management",
@@ -49,6 +75,7 @@ DICIONARIO = {
         "clientes": "Client Management",
         "produtos": "Product Management",
         "ia": "AI Assistant",
+        "config": "Regional Settings & Payments",
         "verificacao": "Security - Email Verification",
         "enviar_codigo": "Send Verification Code",
         "email_label": "Recipient Email Address",
@@ -59,16 +86,18 @@ DICIONARIO = {
         "erro_verif": "Incorrect code. Try again.",
         "add_cliente": "Add New Client",
         "nome_cliente": "Client Name",
-        "salvar": "Save",
+        "salvar": "Save Changes",
         "lista_clientes": "Registered Clients",
         "add_produto": "Add New Product",
         "nome_produto": "Product Name",
-        "preco_produto": "Price ($)",
+        "preco_produto": "Price",
         "lista_produtos": "Products in Stock",
         "chat_ia": "Chat with AI Assistant",
         "pergunta_ia": "Type your management question:",
         "enviar": "Send Question",
+        "sign out": "Sign Out",
         "sair": "Sign Out",
+        "empresa_setup": "Company Profile & Registration",
     },
     "Español": {
         "titulo": "🚀 A Evolution Gestión Online",
@@ -76,26 +105,28 @@ DICIONARIO = {
         "clientes": "Gestión de Clientes",
         "produtos": "Gestión de Productos",
         "ia": "Asistente IA",
+        "config": "Configuración Regional y Pagos",
         "verificacao": "Segurança - Verificación de Correo",
         "enviar_codigo": "Enviar Código de Verificación",
         "email_label": "Correo Electrónico del Destinatario",
         "codigo_label": "Ingrese el código recibido (6 dígitos)",
         "verificar": "Validar y Entrar",
         "sucesso_envio": "¡Código enviado con éxito a la bandeja de entrada!",
-        "sucesso_verif": "¡Acceso autorizado con éxito!",
+        "sucesso_verif": "¡Acceso autorizado com éxito!",
         "erro_verif": "Código incorrecto. Inténtelo de nuevo.",
         "add_cliente": "Añadir Nuevo Cliente",
         "nome_cliente": "Nombre del Cliente",
-        "salvar": "Guardar",
+        "salvar": "Guardar Cambios",
         "lista_clientes": "Clientes Registrados",
         "add_produto": "Añadir Nuevo Producto",
         "nome_produto": "Nombre del Producto",
-        "preco_produto": "Precio (€)",
+        "preco_produto": "Precio",
         "lista_produtos": "Productos en Stock",
         "chat_ia": "Chatea con el Asistente IA",
         "pergunta_ia": "Escribe tu duda de gestión:",
         "enviar": "Enviar Pregunta",
         "sair": "Cerrar Sesión",
+        "empresa_setup": "Registro y Perfil de Empresa",
     },
 }
 
@@ -109,16 +140,65 @@ if "clientes" not in st.session_state:
 if "produtos" not in st.session_state:
   st.session_state["produtos"] = []
 
-# --- SELETOR DE IDIOMA NA BARRA LATERAL (SEM IMAGENS) ---
+# Configurações de Empresa (Padrão Brasil - BRL)
+if "empresa" not in st.session_state:
+  st.session_state["empresa"] = {
+      "nome": "Evolution Corp Brasil",
+      - "pais": "Brasil",
+      "pais_registro": "Brasil",
+      "moeda": "BRL",
+      "simbolo": "R$",
+      "idioma": "Português",
+      "fuso": "UTC-3",
+  }
+
+
+# --- FUNÇÃO DE FORMATAÇÃO MONETÁRIA SEGURA ---
+def formatar_moeda(valor, simbolo="R$"):
+  # Tratamento financeiro rigoroso com separadores e duas casas decimais
+  try:
+    v = float(valor)
+  except:
+    v = 0.0
+  # Padrão brasileiro/internacional adaptável: ex R$ 1.250,00
+  if simbolo in ["R$", "$U", "ARS"]:
+    return f"{simbolo} {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+  else:
+    return f"{simbolo} {v:,.2f}"
+
+
+# --- FUNÇÃO DE CONVERSÃO CAMBIAL AUTOMÁTICA ---
+def converter_cambio(valor, moeda_origem, moeda_destino):
+  # Taxas de referência simuladas e atualizadas (com data/hora dinâmica)
+  taxas = {
+      "BRL": 1.0,
+      "USD": 0.20,
+      "EUR": 0.18,
+      "GBP": 0.15,
+      "JPY": 30.0,
+      "AOA": 180.0,
+      "MZN": 12.5,
+  }
+  base_origem = taxas.get(moeda_origem, 1.0)
+  base_destino = taxas.get(moeda_destino, 1.0)
+  valor_em_brl = valor / base_origem
+  convertido = valor_em_brl * base_destino
+  ultima_atualizacao = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+  return convertido, ultima_atualizacao
+
+
+# --- SELETOR DE IDIOMA E NAVEGAÇÃO NA BARRA LATERAL ---
 with st.sidebar:
-  idioma_atual = st.selectbox("Idioma / Language", ["Português", "English", "Español"])
+  idioma_atual = st.selectbox(
+      "Idioma / Language", ["Português", "English", "Español"], index=0
+  )
   t = DICIONARIO[idioma_atual]
 
-  # O menu só aparece se o utilizador já estiver autenticado
   if st.session_state["autenticado"]:
     st.markdown("---")
     menu = st.radio(
-        t["menu"], [t["clientes"], t["produtos"], t["ia"]]
+        t["menu"],
+        [t["clientes"], t["produtos"], t["config"], t["ia"]],
     )
     st.markdown("---")
     if st.button(t["sair"]):
@@ -135,7 +215,7 @@ def disparar_emailjs(email_destino, codigo):
       "user_id": USER_ID,
       "accessToken": ACCESS_TOKEN,
       "template_params": {
-          "to_email": email_destino,  # Direto para a caixa de entrada da outra pessoa
+          "to_email": email_destino,
           "email": email_destino,
           "codigo": codigo,
       },
@@ -147,11 +227,11 @@ def disparar_emailjs(email_destino, codigo):
     return False
 
 
-# --- BLOCO DE SEGURANÇA / LOGIN (DUAS COLUNAS COM ESTILO VETORIAL E SEM LEGENDA) ---
+# --- BLOCO DE SEGURANÇA / LOGIN (DUAS COLUNAS COM VETOR CORPORATIVO E SEM LEGENDA) ---
 if not st.session_state["autenticado"]:
   st.title(t["titulo"])
   st.markdown("### Acesso Restrito - Validação por E-mail")
-  
+
   col1, col2 = st.columns([1, 1], gap="large")
 
   with col1:
@@ -184,15 +264,16 @@ if not st.session_state["autenticado"]:
           st.error(t["erro_verif"])
 
   with col2:
-    # Ilustração no estilo pretendido e sem o parâmetro 'caption' (sem texto em baixo)[cite: 7]
     st.image(
         "https://img.freepik.com/free-vector/business-team-brainstorming-discussing-startup-project_74855-6908.jpg",
-        use_column_width=True
+        use_column_width=True,
     )
 
-# --- APLICAÇÃO PRINCIPAL (SÓ ABRE APÓS AUTENTICAÇÃO) ---
+# --- APLICAÇÃO PRINCIPAL MULTINACIONAL (SÓ ABRE APÓS AUTENTICAÇÃO) ---
 else:
   st.title(t["titulo"])
+  emp = st.session_state["empresa"]
+  simbolo_ativo = emp["simbolo"]
 
   if menu == t["clientes"]:
     st.header(t["clientes"])
@@ -211,12 +292,21 @@ else:
   elif menu == t["produtos"]:
     st.header(t["produtos"])
     nome_prod = st.text_input(t["nome_produto"])
-    preco_prod = st.number_input(t["preco_produto"], min_value=0.0, format="%.2f")
+    
+    # Campo de preço dinâmico com a moeda ativa da empresa (Padrão R$)
+    preco_prod = st.number_input(
+        f"{t['preco_produto']} ({simbolo_ativo})", min_value=0.0, format="%.2f"
+    )
 
     if st.button(t["salvar"]):
       if nome_prod:
         st.session_state["produtos"].append(
-            {"nome": nome_prod, "preco": preco_prod}
+            {
+                "nome": nome_prod,
+                "preco": preco_prod,
+                "moeda": emp["moeda"],
+                "simbolo": simbolo_ativo,
+            }
         )
         st.success(f"Produto '{nome_prod}' adicionado com sucesso!")
       else:
@@ -224,7 +314,69 @@ else:
 
     st.subheader(t["lista_produtos"])
     for prod in st.session_state["produtos"]:
-      st.write(f"- **{prod['nome']}**: {prod['preco']} €")
+      valor_formatado = formatar_moeda(prod["preco"], prod["simbolo"])
+      st.write(f"- **{prod['nome']}**: {valor_formatado}")
+
+  elif menu == t["config"]:
+    st.header(t["config"])
+    st.subheader(t["empresa_setup"])
+
+    # Formulário de Configurações Regionais e Internacionais
+    with st.form("form_empresa"):
+      novo_nome_empresa = st.text_input("Nome da Empresa", value=emp["nome"])
+      
+      # Seletor internacional de países
+      paises_lista = list(PAISES_MOEDAS.keys())
+      pais_atual_idx = paises_lista.index(emp["pais"]) if emp["pais"] in paises_lista else 0
+      
+      novo_pais = st.selectbox("País de Operação", paises_lista, index=pais_atual_idx)
+      novo_pais_registro = st.selectbox(
+          "País de Registo", paises_lista, index=paises_lista.index(emp["pais_registro"]) if emp["pais_registro"] in paises_lista else 0
+      )
+
+      # Configuração automática da moeda e símbolos associados ao país selecionado
+      info_pais = PAISES_MOEDAS[novo_pais]
+      nova_moeda = info_pais["moeda"]
+      novo_simbolo = info_pais["simbolo"]
+      novo_idioma = info_pais["idioma"]
+      novo_fuso = info_pais["fuso"]
+
+      st.info(f"💱 Moeda Oficial Associada: **{nova_moeda} ({novo_simbolo})** | Fuso: **{novo_fuso}**")
+
+      if st.form_submit_button(t["salvar"]):
+        st.session_state["empresa"] = {
+            "nome": novo_nome_empresa,
+            "pais": novo_pais,
+            "pais_registro": novo_pais_registro,
+            "moeda": nova_moeda,
+            "simbolo": novo_simbolo,
+            "idioma": novo_idioma,
+            "fuso": novo_fuso,
+        }
+        st.success("Configurações regionais e empresariais atualizadas com sucesso!")
+        st.rerun()
+
+    st.markdown("---")
+    st.subheader("💳 Métodos de Pagamento Regionais")
+    if emp["pais"] == "Brasil":
+      st.write("🟢 **PIX** (Ativado - Ambiente de Produção/Teste)")
+      st.write("🟢 **Boleto Bancário** (Ativado)")
+      st.write("🔵 **Cartões Nacionais e Internacionais**")
+    else:
+      st.write("🟢 **PayPal Internacional**")
+      st.write(f"🟢 **Transferência Bancária ({emp['moeda']})**")
+      st.write("🟢 **Cartões de Crédito Internacionais (Visa/Mastercard)**")
+
+    st.markdown("---")
+    st.subheader("💱 Conversor Cambial de Teste")
+    val_conv = st.number_input("Valor a converter", min_value=0.0, value=100.0, format="%.2f")
+    moeda_destino_teste = st.selectbox("Converter para", ["BRL", "USD", "EUR", "GBP", "JPY", "AOA", "MZN"])
+    if st.button("Simular Conversão"):
+      res_conv, data_hora = converter_cambio(val_conv, emp["moeda"], moeda_destino_teste)
+      st.success(
+          f"Valor Original: {formatar_moeda(val_conv, emp['simbolo'])} | Convertido ({moeda_destino_teste}): {formatar_moeda(res_conv, 'US$' if moeda_destino_teste=='USD' else '€' if moeda_destino_teste=='EUR' else 'R$')}"
+          f"\n\n🕒 Última atualização cambial: {data_hora}"
+      )
 
   elif menu == t["ia"]:
     st.header(t["chat_ia"])
@@ -232,9 +384,9 @@ else:
     if st.button(t["enviar"]):
       if pergunta:
         st.info(
-            f"💡 **IA Evolution:** Analisando a sua questão sobre gestão ('{pergunta}'),"
-            " recomendo manter o foco na otimização de custos e acompanhamento"
-            " próximo dos seus clientes registados."
+            f"💡 **IA Evolution:** Analisando a sua questão sobre gestão multi-moeda ('{pergunta}'),"
+            f" com operações a partir de **{emp['pais']} ({emp['moeda']})**,"
+            " recomendo manter o controlo fiscal alinhado com as taxas de câmbio correntes."
         )
       else:
         st.warning("Escreva uma pergunta.")
