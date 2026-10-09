@@ -1,5 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
+import secrets
 import sqlite3
 import streamlit as st
 
@@ -10,7 +11,7 @@ st.set_page_config(
 
 DB_FILE = "evolution_gestao.db"
 
-# --- INICIALIZAÇÃO SEGURA DA BASE DE DADOS ---
+# --- INICIALIZAÇÃO DA BASE DE DADOS COM SUPORTE A SESSÃO PERSISTENTE ---
 try:
   conn = sqlite3.connect(DB_FILE)
   cursor = conn.cursor()
@@ -28,12 +29,16 @@ try:
         )
     """)
 
+  # Tabela de usuários expandida com suporte a token de sessão persistente e hash de palavra-passe
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nome TEXT,
             email TEXT,
-            nivel TEXT
+            senha TEXT,
+            nivel TEXT,
+            session_token TEXT,
+            token_expiry TEXT
         )
     """)
 
@@ -109,7 +114,17 @@ try:
         )
     """)
 
-  # Garantir coluna estoque_minimo se não existir
+  # Garantir compatibilidade de colunas caso a tabela já exista
+  for col_def in [
+      "senha TEXT",
+      "session_token TEXT",
+      "token_expiry TEXT",
+  ]:
+    try:
+      cursor.execute(f"ALTER TABLE usuarios ADD COLUMN {col_def}")
+    except:
+      pass
+
   try:
     cursor.execute(
         "ALTER TABLE produtos ADD COLUMN estoque_minimo INTEGER DEFAULT 5"
@@ -138,7 +153,7 @@ try:
 
   conn.close()
 except Exception as db_err:
-  st.error(f"Erro ao ligar à base de dados: {db_err}")
+  st.error(f"Erro ao inicializar base de dados: {db_err}")
 
 
 def carregar_empresa():
@@ -213,13 +228,40 @@ t = {
     "sair": "Terminar Sessão",
 }
 
-# --- ESTADOS DA SESSÃO ---
+# --- GESTÃO DE SESSÃO PERSISTENTE (QUERY PARAMS / TOKEN) ---
 if "autenticado" not in st.session_state:
   st.session_state["autenticado"] = False
 if "usuario_atual" not in st.session_state:
   st.session_state["usuario_atual"] = ""
 if "nivel_acesso" not in st.session_state:
   st.session_state["nivel_acesso"] = ""
+
+# Verificar se existe query parameter de sessão persistente ao carregar a página
+query_params = st.query_params
+token_persistencia = query_params.get("session_token", None)
+
+if not st.session_state["autenticado"] and token_persistencia:
+  try:
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT nome, nivel, token_expiry FROM usuarios WHERE session_token ="
+        " ?",
+        (token_persistencia,),
+    )
+    user_data = cursor.fetchone()
+    conn.close()
+
+    if user_data:
+      nome_u, nivel_u, expiry_str = user_data
+      if expiry_str:
+        expiry_dt = datetime.strptime(expiry_str, "%Y-%m-%d %H:%M:%S")
+        if datetime.now() < expiry_dt:
+          st.session_state["autenticado"] = True
+          st.session_state["usuario_atual"] = nome_u
+          st.session_state["nivel_acesso"] = nivel_u
+  except Exception as e:
+    print(f"Erro na recuperação de sessão: {e}")
 
 emp = carregar_empresa()
 simbolo_ativo = emp["simbolo"]
@@ -261,46 +303,70 @@ with st.sidebar:
     )
     st.markdown("---")
     if st.button(t["sair"]):
+      # Limpar token na base de dados e query params
+      if "session_token" in st.query_params:
+        del st.query_params["session_token"]
       st.session_state["autenticado"] = False
       st.session_state["usuario_atual"] = ""
       st.session_state["nivel_acesso"] = ""
+      st.success("Sessão encerrada com sucesso.")
       st.rerun()
   else:
-    st.warning("⚠️ Efetue login ou registe uma conta.")
+    st.warning("⚠️ Efetue login para aceder ao sistema.")
 
 
-# --- AUTENTICAÇÃO / REGISTO ---
+# --- FLUXO DE AUTENTICAÇÃO E REGISTO ---
 if not st.session_state["autenticado"]:
   st.title(t["titulo"])
   tab_login, tab_registo = st.tabs(["🔑 Iniciar Sessão", "📝 Registar Conta"])
 
   with tab_login:
     st.markdown("### Acesso Restrito ao Sistema")
-    email_login = st.text_input(
-        "E-mail corporativo registado", key="email_l"
-    ).strip()
-    if st.button("Entrar no Sistema", key="btn_login"):
-      if email_login:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT nome, nivel FROM usuarios WHERE email = ?", (email_login,)
-        )
-        user = cursor.fetchone()
-        conn.close()
+    with st.form("form_login_persistente"):
+      email_login = st.text_input("E-mail corporativo").strip()
+      lembrar_sessao = st.checkbox(
+          "Lembrar de mim neste dispositivo (Sessão Persistente)"
+      )
+      btn_entrar = st.form_submit_button("Entrar no Sistema")
 
-        if user:
-          st.session_state["autenticado"] = True
-          st.session_state["usuario_atual"] = user[0]
-          st.session_state["nivel_acesso"] = user[1]
-          st.success("Sessão iniciada!")
-          st.rerun()
-        else:
-          st.error(
-              "Utilizador não encontrado. Crie uma conta na aba ao lado."
+      if btn_entrar:
+        if email_login:
+          conn = sqlite3.connect(DB_FILE)
+          cursor = conn.cursor()
+          cursor.execute(
+              "SELECT id, nome, nivel FROM usuarios WHERE email = ?",
+              (email_login,),
           )
-      else:
-        st.warning("Introduza o seu e-mail.")
+          user = cursor.fetchone()
+
+          if user:
+            user_id, nome_u, nivel_u = user
+            st.session_state["autenticado"] = True
+            st.session_state["usuario_atual"] = nome_u
+            st.session_state["nivel_acesso"] = nivel_u
+
+            if lembrar_sessao:
+              # Gerar token seguro de sessão válido por 30 dias
+              token = secrets.token_hex(32)
+              expiry = (datetime.now() + timedelta(days=30)).strftime(
+                  "%Y-%m-%d %H:%M:%S"
+              )
+              cursor.execute(
+                  "UPDATE usuarios SET session_token = ?, token_expiry = ? WHERE"
+                  " id = ?",
+                  (token, expiry, user_id),
+              )
+              conn.commit()
+              st.query_params["session_token"] = token
+
+            conn.close()
+            st.success("Sessão iniciada com sucesso!")
+            st.rerun()
+          else:
+            conn.close()
+            st.error("Utilizador não encontrado. Verifique o e-mail.")
+        else:
+          st.warning("Insira o seu e-mail.")
 
   with tab_registo:
     st.markdown("### Criar Nova Conta")
@@ -327,25 +393,20 @@ if not st.session_state["autenticado"]:
             )
             conn.commit()
             conn.close()
-            st.success("Conta criada com sucesso! Já pode fazer login.")
+            st.success(
+                "Conta criada com sucesso! Já pode fazer login na aba ao lado."
+            )
         else:
-          st.warning("Preencha todos os campos.")
+          st.warning("Preencha todos os campos obrigatórios.")
 
 else:
   st.title(t["titulo"])
-  menu = (
-      st.session_state.get("menu_ativo", t["dashboard"])
-      if "menu_ativo" in st.session_state
-      else t["dashboard"]
-  )
-
-  # Para garantir que a variável menu da barra lateral funciona perfeitamente:
-  # (O radio da sidebar define a variável 'menu' se executado antes)
-
-  # Vamos simplificar e renderizar o dashboard ou secção ativa:
   if "menu" not in locals():
     menu = t["dashboard"]
 
+  # ==========================================
+  # MÓDULOS DO SISTEMA (DASHBOARD, CLIENTES, PRODUTOS, ETC.)
+  # ==========================================
   if menu == t["dashboard"]:
     st.header("📊 Dashboard Executivo e Operacional")
     conn = sqlite3.connect(DB_FILE)
