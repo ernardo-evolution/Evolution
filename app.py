@@ -183,6 +183,26 @@ def converter_cambio(valor, moeda_origem, moeda_destino):
   return convertido, ultima_atualizacao
 
 
+# --- FUNÇÃO DE ENVIO EMAILJS ---
+def disparar_emailjs(email_destino, codigo):
+  payload = {
+      "service_id": SERVICE_ID,
+      "template_id": TEMPLATE_ID,
+      "user_id": USER_ID,
+      "accessToken": ACCESS_TOKEN,
+      "template_params": {
+          "to_email": email_destino,
+          "email": email_destino,
+          "codigo": codigo,
+      },
+  }
+  try:
+    resposta = requests.post(EMAILJS_URL, json=payload)
+    return resposta.status_code == 200
+  except Exception:
+    return False
+
+
 # --- SELETOR DE IDIOMA E NAVEGAÇÃO NA BARRA LATERAL (EM ORDEM ALFABÉTICA) ---
 with st.sidebar:
   idiomas_ordenados = sorted(list(DICIONARIO.keys()))
@@ -203,18 +223,162 @@ with st.sidebar:
       st.rerun()
 
 
-# --- FUNÇÃO DE ENVIO EMAILJS ---
-def disparar_emailjs(email_destino, codigo):
-  payload = {
-      "service_id": SERVICE_ID,
-      "template_id": TEMPLATE_ID,
-      "user_id": USER_ID,
-      "accessToken": ACCESS_TOKEN,
-      "template_params": {
-          "to_email": email_destino,
-          "email": email_destino,
-          "codigo": codigo,
-      },
-  }
-  try:
-    resposta = requests.post(EMAILJS_URL, json=payload)
+# --- BLOCO DE SEGURANÇA / LOGIN (DUAS COLUNAS COM VETOR CORPORATIVO E SEM LEGENDA) ---
+if not st.session_state["autenticado"]:
+  st.title(t["titulo"])
+  st.markdown("### Acesso Restrito - Validação por E-mail")
+
+  col1, col2 = st.columns([1, 1], gap="large")
+
+  with col1:
+    st.markdown("#### Entrar no Sistema")
+    email_input = st.text_input(t["email_label"])
+
+    if st.button(t["enviar_codigo"], use_container_width=True):
+      if email_input:
+        novo_codigo = str(random.randint(100000, 999999))
+        st.session_state["codigo_enviado"] = novo_codigo
+
+        sucesso = disparar_emailjs(email_input, novo_codigo)
+        if sucesso:
+          st.success(t["sucesso_envio"])
+        else:
+          st.error("Erro ao comunicar com o EmailJS.")
+      else:
+        st.warning("Insira um e-mail válido.")
+
+    if st.session_state["codigo_enviado"]:
+      codigo_digitado = st.text_input(
+          t["codigo_label"], type="password", max_chars=6
+      )
+      if st.button(t["verificar"], use_container_width=True):
+        if codigo_digitado == st.session_state["codigo_enviado"]:
+          st.session_state["autenticado"] = True
+          st.success(t["sucesso_verif"])
+          st.rerun()
+        else:
+          st.error(t["erro_verif"])
+
+  with col2:
+    st.image(
+        "https://img.freepik.com/free-vector/business-team-brainstorming-discussing-startup-project_74855-6908.jpg",
+        use_column_width=True,
+    )
+
+# --- APLICAÇÃO PRINCIPAL MULTINACIONAL (SÓ ABRE APÓS AUTENTICAÇÃO) ---
+else:
+  st.title(t["titulo"])
+  emp = st.session_state["empresa"]
+  simbolo_ativo = emp["simbolo"]
+
+  if menu == t["clientes"]:
+    st.header(t["clientes"])
+    nome_cli = st.text_input(t["nome_cliente"])
+    if st.button(t["salvar"]):
+      if nome_cli:
+        st.session_state["clientes"].append(nome_cli)
+        st.success(f"Cliente '{nome_cli}' adicionado com sucesso!")
+      else:
+        st.warning("O nome não pode estar vazio.")
+
+    st.subheader(t["lista_clientes"])
+    for cli in st.session_state["clientes"]:
+      st.write(f"- {cli}")
+
+  elif menu == t["produtos"]:
+    st.header(t["produtos"])
+    nome_prod = st.text_input(t["nome_produto"])
+    
+    preco_prod = st.number_input(
+        f"{t['preco_produto']} ({simbolo_ativo})", min_value=0.0, format="%.2f"
+    )
+
+    if st.button(t["salvar"]):
+      if nome_prod:
+        st.session_state["produtos"].append(
+            {
+                "nome": nome_prod,
+                "preco": preco_prod,
+                "moeda": emp["moeda"],
+                "simbolo": simbolo_ativo,
+            }
+        )
+        st.success(f"Produto '{nome_prod}' adicionado com sucesso!")
+      else:
+        st.warning("Insira o nome do produto.")
+
+    st.subheader(t["lista_produtos"])
+    for prod in st.session_state["produtos"]:
+      valor_formatado = formatar_moeda(prod["preco"], prod["simbolo"])
+      st.write(f"- **{prod['nome']}**: {valor_formatado}")
+
+  elif menu == t["config"]:
+    st.header(t["config"])
+    st.subheader(t["empresa_setup"])
+
+    with st.form("form_empresa"):
+      novo_nome_empresa = st.text_input("Nome da Empresa", value=emp["nome"])
+      
+      paises_lista = sorted(list(PAISES_MOEDAS.keys()))
+      pais_atual_idx = paises_lista.index(emp["pais"]) if emp["pais"] in paises_lista else 0
+      
+      novo_pais = st.selectbox("País de Operação", paises_lista, index=pais_atual_idx)
+      novo_pais_registro = st.selectbox(
+          "País de Registo", paises_lista, index=paises_lista.index(emp["pais_registro"]) if emp["pais_registro"] in paises_lista else 0
+      )
+
+      info_pais = PAISES_MOEDAS[novo_pais]
+      nova_moeda = info_pais["moeda"]
+      novo_simbolo = info_pais["simbolo"]
+      novo_idioma = info_pais["idioma"]
+      novo_fuso = info_pais["fuso"]
+
+      st.info(f"💱 Moeda Oficial Associada: **{nova_moeda} ({novo_simbolo})** | Fuso: **{novo_fuso}**")
+
+      if st.form_submit_button(t["salvar"]):
+        st.session_state["empresa"] = {
+            "nome": novo_nome_empresa,
+            "pais": novo_pais,
+            "pais_registro": novo_pais_registro,
+            "moeda": nova_moeda,
+            "simbolo": novo_simbolo,
+            "idioma": novo_idioma,
+            "fuso": novo_fuso,
+        }
+        st.success("Configurações regionais e empresariais atualizadas com sucesso!")
+        st.rerun()
+
+    st.markdown("---")
+    st.subheader("💳 Métodos de Pagamento Regionais")
+    if emp["pais"] == "Brasil":
+      st.write("🟢 **PIX** (Ativado - Ambiente de Produção/Teste)")
+      st.write("🟢 **Boleto Bancário** (Ativado)")
+      st.write("🔵 **Cartões Nacionais e Internacionais**")
+    else:
+      st.write("🟢 **PayPal Internacional**")
+      st.write(f"🟢 **Transferência Bancária ({emp['moeda']})**")
+      st.write("🟢 **Cartões de Crédito Internacionais (Visa/Mastercard)**")
+
+    st.markdown("---")
+    st.subheader("💱 Conversor Cambial de Teste")
+    val_conv = st.number_input("Valor a converter", min_value=0.0, value=100.0, format="%.2f")
+    moeda_destino_teste = st.selectbox("Converter para", sorted(["BRL", "USD", "EUR", "GBP", "JPY", "AOA", "MZN"]))
+    if st.button("Simular Conversão"):
+      res_conv, data_hora = converter_cambio(val_conv, emp["moeda"], moeda_destino_teste)
+      st.success(
+          f"Valor Original: {formatar_moeda(val_conv, emp['simbolo'])} | Convertido ({moeda_destino_teste}): {formatar_moeda(res_conv, 'US$' if moeda_destino_teste=='USD' else '€' if moeda_destino_teste=='EUR' else 'R$')}"
+          f"\n\n🕒 Última atualização cambial: {data_hora}"
+      )
+
+  elif menu == t["ia"]:
+    st.header(t["chat_ia"])
+    pergunta = st.text_input(t["pergunta_ia"])
+    if st.button(t["enviar"]):
+      if pergunta:
+        st.info(
+            f"💡 **IA Evolution:** Analisando a sua questão sobre gestão multi-moeda ('{pergunta}'),"
+            f" com operações a partir de **{emp['pais']} ({emp['moeda']})**,"
+            " recomendo manter o controlo fiscal alinhado com as taxas de câmbio correntes."
+        )
+      else:
+        st.warning("Escreva uma pergunta.")
