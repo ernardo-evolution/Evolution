@@ -38,37 +38,8 @@ PAISES_MOEDAS = {
     "Uruguai": {"codigo": "UY", "moeda": "UYU", "simbolo": "$U", "idioma": "Español", "fuso": "UTC-3"},
 }
 
-# --- DICIONÁRIO MULTILÍNGUA ---
+# --- DICIONÁRIO MULTILÍNGUA COM ITENS EM ORDEM ALFABÉTICA ---
 DICIONARIO = {
-    "Português": {
-        "titulo": "🚀 A Evolution Gestão Online",
-        "menu": "Menu Principal",
-        "clientes": "Gestão de Clientes",
-        "produtos": "Gestão de Produtos",
-        "ia": "Assistente IA",
-        "config": "Configurações Regionais & Pagamentos",
-        "verificacao": "Segurança - Verificação de E-mail",
-        "enviar_codigo": "Enviar Código de Verificação",
-        "email_label": "Endereço de E-mail do Destinatário",
-        "codigo_label": "Insira o código recebido (6 dígitos)",
-        "verificar": "Validar e Entrar",
-        "sucesso_envio": "Código enviado com sucesso para a caixa de entrada!",
-        "sucesso_verif": "Acesso autorizado com sucesso!",
-        "erro_verif": "Código incorreto. Tente novamente.",
-        "add_cliente": "Adicionar Novo Cliente",
-        "nome_cliente": "Nome do Cliente",
-        "salvar": "Guardar Alterações",
-        "lista_clientes": "Clientes Registados",
-        "add_produto": "Adicionar Novo Produto",
-        "nome_produto": "Nome do Produto",
-        "preco_produto": "Preço",
-        "lista_produtos": "Produtos em Stock",
-        "chat_ia": "Converse com o Assistente IA",
-        "pergunta_ia": "Escreva a sua dúvida sobre gestão:",
-        "enviar": "Enviar Pergunta",
-        "sair": "Terminar Sessão",
-        "empresa_setup": "Registo e Perfil da Empresa",
-    },
     "English": {
         "titulo": "🚀 A Evolution Online Management",
         "menu": "Main Menu",
@@ -110,7 +81,7 @@ DICIONARIO = {
         "email_label": "Correo Electrónico del Destinatario",
         "codigo_label": "Ingrese el código recibido (6 dígitos)",
         "verificar": "Validar y Entrar",
-        "sucesso_envio": "¡Código enviado com éxito a la bandeja de entrada!",
+        "sucesso_envio": "¡Código enviado con éxito a la bandeja de entrada!",
         "sucesso_verif": "¡Acceso autorizado com éxito!",
         "erro_verif": "Código incorrecto. Inténtelo de nuevo.",
         "add_cliente": "Añadir Nuevo Cliente",
@@ -126,6 +97,35 @@ DICIONARIO = {
         "enviar": "Enviar Pregunta",
         "sair": "Cerrar Sesión",
         "empresa_setup": "Registro y Perfil de Empresa",
+    },
+    "Português": {
+        "titulo": "🚀 A Evolution Gestão Online",
+        "menu": "Menu Principal",
+        "clientes": "Gestão de Clientes",
+        "produtos": "Gestão de Produtos",
+        "ia": "Assistente IA",
+        "config": "Configurações Regionais & Pagamentos",
+        "verificacao": "Segurança - Verificação de E-mail",
+        "enviar_codigo": "Enviar Código de Verificação",
+        "email_label": "Endereço de E-mail do Destinatário",
+        "codigo_label": "Insira o código recebido (6 dígitos)",
+        "verificar": "Validar e Entrar",
+        "sucesso_envio": "Código enviado com sucesso para a caixa de entrada!",
+        "sucesso_verif": "Acesso autorizado com sucesso!",
+        "erro_verif": "Código incorreto. Tente novamente.",
+        "add_cliente": "Adicionar Novo Cliente",
+        "nome_cliente": "Nome do Cliente",
+        "salvar": "Guardar Alterações",
+        "lista_clientes": "Clientes Registados",
+        "add_produto": "Adicionar Novo Produto",
+        "nome_produto": "Nome do Produto",
+        "preco_produto": "Preço",
+        "lista_produtos": "Produtos em Stock",
+        "chat_ia": "Converse com o Assistente IA",
+        "pergunta_ia": "Escreva a sua dúvida sobre gestão:",
+        "enviar": "Enviar Pergunta",
+        "sair": "Terminar Sessão",
+        "empresa_setup": "Registo e Perfil da Empresa",
     },
 }
 
@@ -183,19 +183,28 @@ def converter_cambio(valor, moeda_origem, moeda_destino):
   return convertido, ultima_atualizacao
 
 
-# --- SELETOR DE IDIOMA E NAVEGAÇÃO NA BARRA LATERAL ---
+# --- SELETOR DE IDIOMA E NAVEGAÇÃO NA BARRA LATERAL (EM ORDEM ALFABÉTICA) ---
 with st.sidebar:
-  idioma_atual = st.selectbox(
-      "Idioma / Language", ["Português", "English", "Español"], index=0
-  )
+  # Idiomas ordenados alfabeticamente: English, Español, Português
+  idiomas_ordenados = sorted(list(DICIONARIO.keys()))
+  idioma_atual = st.selectbox("Idioma / Language", idiomas_ordenados)
   t = DICIONARIO[idioma_atual]
 
   if st.session_state["autenticado"]:
     st.markdown("---")
-    menu = st.radio(
-        t["menu"],
-        [t["clientes"], t["produtos"], t["config"], t["ia"]],
-    )
+    
+    # Itens do menu ordenados estritamente em ordem alfabética para cada idioma
+    if idioma_atual == "English":
+      opcoes_menu = [t["ia"], t["clientes"], t["config"], t["produtos"]]
+    elif idioma_atual == "Español":
+      opcoes_menu = [t["ia"], t["clientes"], t["config"], t["produtos"]]
+    else:  # Português
+      opcoes_menu = [t["ia"], t["clientes"], t["config"], t["produtos"]]
+    
+    # Ordenar alfabeticamente por nome da opção
+    opcoes_menu = sorted(opcoes_menu)
+
+    menu = st.radio(t["menu"], opcoes_menu)
     st.markdown("---")
     if st.button(t["sair"]):
       st.session_state["autenticado"] = False
@@ -319,7 +328,7 @@ else:
     with st.form("form_empresa"):
       novo_nome_empresa = st.text_input("Nome da Empresa", value=emp["nome"])
       
-      paises_lista = list(PAISES_MOEDAS.keys())
+      paises_lista = sorted(list(PAISES_MOEDAS.keys()))
       pais_atual_idx = paises_lista.index(emp["pais"]) if emp["pais"] in paises_lista else 0
       
       novo_pais = st.selectbox("País de Operação", paises_lista, index=pais_atual_idx)
@@ -328,7 +337,4 @@ else:
       )
 
       info_pais = PAISES_MOEDAS[novo_pais]
-      nova_moeda = info_pais["moeda"]
-      novo_simbolo = info_pais["simbolo"]
-      novo_idioma = info_pais["idioma"]
-      novo_fuso = info_pais
+      nova_moeda =
