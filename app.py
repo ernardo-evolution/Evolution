@@ -707,4 +707,116 @@ else:
     tarefas = cursor.fetchall()
     conn.close()
 
-    for tr in tarefas
+    for tr in tarefas:
+      st.write(
+          f"📌 **{tr[1]}** (Resp: {tr[2]} | Prazo: {tr[3]} | Prioridade:"
+          f" {tr[4]} | Status: **{tr[5]}**)"
+      )
+      if tr[5] != "Concluída" and st.button(
+          f"Concluir Tarefa #{tr[0]}", key=f"t_{tr[0]}"
+      ):
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE tarefas SET status = 'Concluída' WHERE id = ?", (tr[0],)
+        )
+        conn.commit()
+        conn.close()
+        st.success("Tarefa concluída!")
+        st.rerun()
+
+  # ==========================================
+  # 10. MYA (ASSISTENTE INTELIGENTE)
+  # ==========================================
+  elif menu == t["mya"]:
+    st.header("🤖 MyA — Assistente Inteligente do Evolution")
+    st.write(
+        "Faça perguntas diretas sobre os processos, pedidos ou estado do"
+        " sistema:"
+    )
+
+    pergunta = st.text_input(
+        "Ex: 'O que falta para concluir o pedido do cliente X?' ou 'Tem algum"
+        " pedido parado?'"
+    )
+    if st.button("Perguntar à MyA"):
+      if pergunta:
+        p_lower = pergunta.lower()
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+
+        resposta_mya = ""
+        if "parado" in p_lower or "aguardando" in p_lower:
+          cursor.execute(
+              "SELECT COUNT(*) FROM pedidos WHERE status_separacao = 'Pendente'"
+          )
+          qtd_p = cursor.fetchone()[0]
+          resposta_mya = (
+              f"Existem {qtd_p} pedidos aguardando o processo de separação de"
+              " produtos."
+          )
+        elif "pedido" in p_lower:
+          cursor.execute(
+              "SELECT id, cliente, status_separacao, status_envio FROM pedidos"
+          )
+          p_all = cursor.fetchall()
+          detalhes_p = [
+              f"Pedido #{p[0]} (Cliente: {p[1]} | Separação: {p[2]} | Envio:"
+              f" {p[3]})"
+              for p in p_all
+          ]
+          resposta_mya = (
+              "Estado atual dos pedidos no sistema:\n- "
+              + "\n- ".join(detalhes_p)
+              if detalhes_p
+              else "Não há pedidos registados."
+          )
+        else:
+          cursor.execute("SELECT COUNT(*) FROM vendas")
+          tot_v = cursor.fetchone()[0]
+          resposta_mya = (
+              f"Com base nas informações do sistema, temos {tot_v} vendas"
+              " registadas e os fluxos estão operacionais."
+          )
+
+        conn.close()
+        st.info(f"💡 **MyA:** {resposta_mya}")
+      else:
+        st.warning("Escreva uma pergunta.")
+
+  # ==========================================
+  # 11. CONFIGURAÇÕES
+  # ==========================================
+  elif menu == t["config"]:
+    st.header(t["config"])
+    with st.form("form_emp"):
+      nome_emp = st.text_input("Nome da Empresa", value=emp["nome"])
+      pais_op = st.selectbox(
+          "País de Operação",
+          list(PAISES_MOEDAS.keys()),
+          index=list(PAISES_MOEDAS.keys()).index(emp["pais"])
+          if emp["pais"] in PAISES_MOEDAS
+          else 0,
+      )
+      if st.form_submit_button("Guardar Configurações"):
+        dados_p = PAISES_MOEDAS[pais_op]
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM empresa")
+        cursor.execute(
+            "INSERT INTO empresa (nome, pais, pais_registro, moeda, simbolo,"
+            " idioma, fuso) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                nome_emp,
+                pais_op,
+                pais_op,
+                dados_p["moeda"],
+                dados_p["simbolo"],
+                dados_p["idioma"],
+                "UTC-3",
+            ),
+        )
+        conn.commit()
+        conn.close()
+        st.success("Configurações atualizadas!")
+        st.rerun()
