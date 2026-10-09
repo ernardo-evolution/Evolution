@@ -128,6 +128,11 @@ try:
   except:
     pass
 
+  try:
+    cursor.execute("ALTER TABLE clientes ADD COLUMN pais TEXT")
+  except:
+    pass
+
   for col_nec in ["senha", "session_token", "token_expiry"]:
     try:
       cursor.execute(f"ALTER TABLE usuarios ADD COLUMN {col_nec} TEXT")
@@ -488,4 +493,153 @@ else:
     except Exception as e:
       st.error(f"Erro ao listar clientes: {e}")
 
-  # --- MÓD
+  # --- MÓDULO: PRODUTOS ---
+  elif menu == t["produtos"]:
+    st.header("📦 Gestão de Produtos")
+    with st.form("form_add_produto"):
+      st.subheader("Registar Novo Produto")
+      p_nome = st.text_input("Nome do Produto")
+      p_preco = st.number_input("Preço Unitário", min_value=0.0, format="%.2f")
+      p_qtd = st.number_input("Quantidade em Estoque", min_value=0, value=10)
+      p_min = st.number_input("Estoque Mínimo", min_value=0, value=5)
+      if st.form_submit_button("Guardar Produto"):
+        if p_nome:
+          conn = sqlite3.connect(DB_FILE)
+          cursor = conn.cursor()
+          cursor.execute(
+              "INSERT INTO produtos (nome, preco, quantidade_estoque,"
+              " estoque_minimo, moeda, simbolo) VALUES (?, ?, ?, ?, ?, ?)",
+              (
+                  p_nome,
+                  p_preco,
+                  p_qtd,
+                  p_min,
+                  emp["moeda"],
+                  emp["simbolo"],
+              ),
+          )
+          conn.commit()
+          conn.close()
+          registrar_historico(
+              st.session_state["usuario_atual"],
+              "Novo Produto",
+              f"Produto {p_nome} adicionado.",
+          )
+          st.success("Produto registado com sucesso!")
+          st.rerun()
+        else:
+          st.warning("O nome do produto é obrigatório.")
+
+    st.markdown("---")
+    st.subheader("Catálogo de Produtos")
+    try:
+      conn = sqlite3.connect(DB_FILE)
+      cursor = conn.cursor()
+      cursor.execute(
+          "SELECT id, nome, preco, quantidade_estoque, estoque_minimo FROM"
+          " produtos"
+      )
+      produtos = cursor.fetchall()
+      conn.close()
+      if produtos:
+        for pr in produtos:
+          st.markdown(
+              f"**ID:** {pr[0]} | **Produto:** {pr[1]} | **Preço:**"
+              f" {formatar_moeda(pr[2])} | **Estoque:** {pr[3]} (Mín:"
+              f" {pr[4]})"
+          )
+      else:
+        st.info("Nenhum produto registado.")
+    except Exception as e:
+      st.error(f"Erro ao listar produtos: {e}")
+
+  # --- MÓDULO: ESTOQUE ---
+  elif menu == t["estoque"]:
+    st.header("🏭 Controlo de Estoque")
+    try:
+      conn = sqlite3.connect(DB_FILE)
+      cursor = conn.cursor()
+      cursor.execute(
+          "SELECT id, nome, quantidade_estoque, estoque_minimo FROM produtos"
+      )
+      prods = cursor.fetchall()
+      conn.close()
+      if prods:
+        for pr in prods:
+          status_est = (
+              "⚠️ BAIXO"
+              if pr[2] <= pr[3]
+              else "✅ Normal"
+          )
+          st.markdown(
+              f"**{pr[1]}** — Quantidade: **{pr[2]}** | Mínimo: {pr[3]} |"
+              f" Estado: {status_est}"
+          )
+      else:
+        st.info("Sem produtos no estoque.")
+    except Exception as e:
+      st.error(f"Erro ao consultar estoque: {e}")
+
+  # --- MÓDULO: VENDAS ---
+  elif menu == t["vendas"]:
+    st.header("🛒 Registar Venda")
+    try:
+      conn = sqlite3.connect(DB_FILE)
+      cursor = conn.cursor()
+      cursor.execute("SELECT nome FROM clientes")
+      cli_list = [c[0] for c in cursor.fetchall()]
+      cursor.execute(
+          "SELECT nome, preco, quantidade_estoque FROM produtos WHERE"
+          " quantidade_estoque > 0"
+      )
+      prod_data = cursor.fetchall()
+      conn.close()
+
+      if not cli_list or not prod_data:
+        st.warning(
+            "Necessita de ter clientes e produtos com estoque para efetuar"
+            " vendas."
+        )
+      else:
+        prod_dict = {p[0]: {"preco": p[1], "estoque": p[2]} for p in prod_data}
+        with st.form("form_registar_venda"):
+          cli_sel = st.selectbox("Cliente", cli_list)
+          prod_sel = st.selectbox("Produto", list(prod_dict.keys()))
+          qtd_venda = st.number_input("Quantidade", min_value=1, value=1)
+          btn_vender = st.form_submit_button("Concluir Venda")
+
+          if btn_vender:
+            preco_unit = prod_dict[prod_sel]["preco"]
+            estoque_atual = prod_dict[prod_sel]["estoque"]
+            if qtd_venda > estoque_atual:
+              st.error("Quantidade superior ao estoque disponível!")
+            else:
+              val_total = qtd_venda * preco_unit
+              data_h = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+              conn = sqlite3.connect(DB_FILE)
+              cursor = conn.cursor()
+              cursor.execute(
+                  "INSERT INTO vendas (cliente, produto, quantidade,"
+                  " valor_unitario, valor_total, moeda_original, data_hora)"
+                  " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  (
+                      cli_sel,
+                      prod_sel,
+                      qtd_venda,
+                      preco_unit,
+                      val_total,
+                      emp["moeda"],
+                      data_h,
+                  ),
+              )
+              cursor.execute(
+                  "UPDATE produtos SET quantidade_estoque = quantidade_estoque -"
+                  " ? WHERE nome = ?",
+                  (qtd_venda, prod_sel),
+              )
+              conn.commit()
+              conn.close()
+
+              registrar_historico(
+                  st.session_state["usuario_atual"],
