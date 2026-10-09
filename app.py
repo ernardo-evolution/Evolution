@@ -160,7 +160,20 @@ except Exception as db_err:
   st.stop()
 
 
-# --- 3. FUNÇÕES AUXILIARES ---
+# --- 3. MAPEAMENTO DE PAÍSES E MOEDAS ---
+PAISES_MOEDAS = {
+    "Brasil": {"moeda": "BRL", "simbolo": "R$", "idioma": "Português"},
+    "Portugal": {"moeda": "EUR", "simbolo": "€", "idioma": "Português"},
+    "Estados Unidos": {
+        "moeda": "USD",
+        "simbolo": "US$",
+        "idioma": "English",
+    },
+    "Espanha": {"moeda": "EUR", "simbolo": "€", "idioma": "Español"},
+}
+
+
+# --- 4. FUNÇÕES AUXILIARES ---
 def carregar_empresa():
   try:
     conn = sqlite3.connect(DB_FILE)
@@ -224,7 +237,7 @@ t = {
     "sair": "Terminar Sessão",
 }
 
-# --- 4. GESTÃO DE SESSÃO E PERSISTÊNCIA ---
+# --- 5. GESTÃO DE SESSÃO E PERSISTÊNCIA ---
 if "autenticado" not in st.session_state:
   st.session_state["autenticado"] = False
 if "usuario_atual" not in st.session_state:
@@ -273,7 +286,7 @@ def formatar_moeda(valor):
   )
 
 
-# --- 5. BARRA LATERAL ---
+# --- 6. BARRA LATERAL ---
 menu = t["dashboard"]
 with st.sidebar:
   if st.session_state["autenticado"]:
@@ -309,7 +322,7 @@ with st.sidebar:
     st.warning("⚠️ Efetue login para aceder.")
 
 
-# --- 6. INTERFACE PRINCIPAL ---
+# --- 7. INTERFACE PRINCIPAL ---
 if not st.session_state["autenticado"]:
   st.title(t["titulo"])
   tab_login, tab_registo = st.tabs(["🔑 Iniciar Sessão", "📝 Registar Conta"])
@@ -434,7 +447,7 @@ else:
       c_nome = st.text_input("Nome do Cliente")
       c_email = st.text_input("E-mail")
       c_tel = st.text_input("Telefone")
-      c_pais = st.text_input("País")
+      c_pais = st.selectbox("País", list(PAISES_MOEDAS.keys()))
       if st.form_submit_button("Guardar Cliente"):
         if c_nome:
           conn = sqlite3.connect(DB_FILE)
@@ -475,259 +488,4 @@ else:
     except Exception as e:
       st.error(f"Erro ao listar clientes: {e}")
 
-  # --- MÓDULO: PRODUTOS ---
-  elif menu == t["produtos"]:
-    st.header("📦 Gestão de Produtos")
-    with st.form("form_add_produto"):
-      st.subheader("Registar Novo Produto")
-      p_nome = st.text_input("Nome do Produto")
-      p_preco = st.number_input("Preço Unitário", min_value=0.0, format="%.2f")
-      p_qtd = st.number_input("Quantidade em Estoque", min_value=0, value=10)
-      p_min = st.number_input("Estoque Mínimo", min_value=0, value=5)
-      if st.form_submit_button("Guardar Produto"):
-        if p_nome:
-          conn = sqlite3.connect(DB_FILE)
-          cursor = conn.cursor()
-          cursor.execute(
-              "INSERT INTO produtos (nome, preco, quantidade_estoque,"
-              " estoque_minimo, moeda, simbolo) VALUES (?, ?, ?, ?, ?, ?)",
-              (p_nome, p_preco, p_qtd, p_min, emp["moeda"], emp["simbolo"]),
-          )
-          conn.commit()
-          conn.close()
-          registrar_historico(
-              st.session_state["usuario_atual"],
-              "Novo Produto",
-              f"Produto {p_nome} adicionado.",
-          )
-          st.success("Produto registado com sucesso!")
-          st.rerun()
-        else:
-          st.warning("O nome do produto é obrigatório.")
-
-    st.markdown("---")
-    st.subheader("Catálogo de Produtos")
-    try:
-      conn = sqlite3.connect(DB_FILE)
-      cursor = conn.cursor()
-      cursor.execute(
-          "SELECT id, nome, preco, quantidade_estoque, estoque_minimo FROM"
-          " produtos"
-      )
-      produtos = cursor.fetchall()
-      conn.close()
-      if produtos:
-        for pr in produtos:
-          st.markdown(
-              f"**ID:** {pr[0]} | **Produto:** {pr[1]} | **Preço:**"
-              f" {formatar_moeda(pr[2])} | **Estoque:** {pr[3]} (Mín:"
-              f" {pr[4]})"
-          )
-      else:
-        st.info("Nenhum produto registado.")
-    except Exception as e:
-      st.error(f"Erro ao listar produtos: {e}")
-
-  # --- MÓDULO: ESTOQUE ---
-  elif menu == t["estoque"]:
-    st.header("🏭 Controlo de Estoque")
-    try:
-      conn = sqlite3.connect(DB_FILE)
-      cursor = conn.cursor()
-      cursor.execute(
-          "SELECT id, nome, quantidade_estoque, estoque_minimo FROM produtos"
-      )
-      prods = cursor.fetchall()
-      conn.close()
-      if prods:
-        for pr in prods:
-          status_est = (
-              "⚠️ BAIXO"
-              if pr[2] <= pr[3]
-              else "✅ Normal"
-          )
-          st.markdown(
-              f"**{pr[1]}** — Quantidade: **{pr[2]}** | Mínimo: {pr[3]} |"
-              f" Estado: {status_est}"
-          )
-      else:
-        st.info("Sem produtos no estoque.")
-    except Exception as e:
-      st.error(f"Erro ao consultar estoque: {e}")
-
-  # --- MÓDULO: VENDAS ---
-  elif menu == t["vendas"]:
-    st.header("🛒 Registar Venda")
-    try:
-      conn = sqlite3.connect(DB_FILE)
-      cursor = conn.cursor()
-      cursor.execute("SELECT nome FROM clientes")
-      cli_list = [c[0] for c in cursor.fetchall()]
-      cursor.execute(
-          "SELECT nome, preco, quantidade_estoque FROM produtos WHERE"
-          " quantidade_estoque > 0"
-      )
-      prod_data = cursor.fetchall()
-      conn.close()
-
-      if not cli_list or not prod_data:
-        st.warning(
-            "Necessita de ter clientes e produtos com estoque para efetuar"
-            " vendas."
-        )
-      else:
-        prod_dict = {p[0]: {"preco": p[1], "estoque": p[2]} for p in prod_data}
-        with st.form("form_registar_venda"):
-          cli_sel = st.selectbox("Cliente", cli_list)
-          prod_sel = st.selectbox("Produto", list(prod_dict.keys()))
-          qtd_venda = st.number_input("Quantidade", min_value=1, value=1)
-          btn_vender = st.form_submit_button("Concluir Venda")
-
-          if btn_vender:
-            preco_unit = prod_dict[prod_sel]["preco"]
-            estoque_atual = prod_dict[prod_sel]["estoque"]
-            if qtd_venda > estoque_atual:
-              st.error("Quantidade superior ao estoque disponível!")
-            else:
-              val_total = qtd_venda * preco_unit
-              data_h = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-
-              conn = sqlite3.connect(DB_FILE)
-              cursor = conn.cursor()
-              cursor.execute(
-                  "INSERT INTO vendas (cliente, produto, quantidade,"
-                  " valor_unitario, valor_total, moeda_original, data_hora)"
-                  " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                  (
-                      cli_sel,
-                      prod_sel,
-                      qtd_venda,
-                      preco_unit,
-                      val_total,
-                      emp["moeda"],
-                      data_h,
-                  ),
-              )
-              cursor.execute(
-                  "UPDATE produtos SET quantidade_estoque = quantidade_estoque -"
-                  " ? WHERE nome = ?",
-                  (qtd_venda, prod_sel),
-              )
-              conn.commit()
-              conn.close()
-
-              registrar_historico(
-                  st.session_state["usuario_atual"],
-                  "Nova Venda",
-                  f"Venda de {qtd_venda}x {prod_sel} para {cli_sel}.",
-              )
-              st.success("Venda efetuada com sucesso e estoque atualizado!")
-              st.rerun()
-    except Exception as e:
-      st.error(f"Erro no módulo de vendas: {e}")
-
-  # --- MÓDULO: PEDIDOS ---
-  elif menu == t["pedidos"]:
-    st.header("📋 Gestão de Pedidos")
-    try:
-      conn = sqlite3.connect(DB_FILE)
-      cursor = conn.cursor()
-      cursor.execute(
-          "SELECT id, cliente, produto, quantidade, status_pedido FROM pedidos"
-      )
-      pedidos = cursor.fetchall()
-      conn.close()
-      if pedidos:
-        for p in pedidos:
-          st.markdown(
-              f"**Pedido #{p[0]}** | Cliente: {p[1]} | Produto: {p[2]} | Qtd:"
-              f" {p[3]} | Estado: **{p[4]}**"
-          )
-      else:
-        st.info("Nenhum pedido registado.")
-    except Exception as e:
-      st.error(f"Erro ao carregar pedidos: {e}")
-
-  # --- MÓDULO: RELATÓRIOS ---
-  elif menu == t["relatorios"]:
-    st.header("📈 Relatórios do Sistema")
-    st.markdown(
-        "Aqui pode visualizar o histórico de ações e relatórios financeiros."
-    )
-    try:
-      conn = sqlite3.connect(DB_FILE)
-      cursor = conn.cursor()
-      cursor.execute("SELECT usuario, acao, detalhes, data_hora FROM historico")
-      hist = cursor.fetchall()
-      conn.close()
-      if hist:
-        for h in hist:
-          st.text(f"[{h[3]}] {h[0]} - {h[1]}: {h[2]}")
-      else:
-        st.info("Sem registos no histórico.")
-    except Exception as e:
-      st.error(f"Erro ao carregar relatórios: {e}")
-
-  # --- MÓDULO: TAREFAS ---
-  elif menu == t["tarefas"]:
-    st.header("📝 Gestão de Tarefas")
-    with st.form("form_tarefa"):
-      t_titulo = st.text_input("Título da Tarefa")
-      t_resp = st.text_input("Responsável")
-      t_prioridade = st.selectbox("Prioridade", ["Baixa", "Média", "Alta"])
-      if st.form_submit_button("Criar Tarefa"):
-        if t_titulo:
-          conn = sqlite3.connect(DB_FILE)
-          cursor = conn.cursor()
-          cursor.execute(
-              "INSERT INTO tarefas (titulo, responsavel, prioridade, status,"
-              " data_criacao) VALUES (?, ?, ?, ?, ?)",
-              (
-                  t_titulo,
-                  t_resp,
-                  t_prioridade,
-                  "Pendente",
-                  datetime.now().strftime("%d/%m/%Y"),
-              ),
-          )
-          conn.commit()
-          conn.close()
-          st.success("Tarefa criada!")
-          st.rerun()
-    try:
-      conn = sqlite3.connect(DB_FILE)
-      cursor = conn.cursor()
-      cursor.execute(
-          "SELECT titulo, responsavel, prioridade, status FROM tarefas"
-      )
-      tarefas = cursor.fetchall()
-      conn.close()
-      if tarefas:
-        for tf in tarefas:
-          st.markdown(
-              f"**{tf[0]}** | Resp: {tf[1]} | Prioridade: {tf[2]} | Estado:"
-              f" {tf[3]}"
-          )
-    except:
-      pass
-
-  # --- MÓDULO: CONFIGURAÇÕES ---
-  elif menu == t["config"]:
-    st.header("⚙️ Configurações da Empresa")
-    with st.form("form_config"):
-      novo_nome_emp = st.text_input("Nome da Empresa", value=emp["nome"])
-      nova_moeda = st.selectbox(
-          "Moeda do Sistema", ["BRL", "USD", "EUR"], index=0
-      )
-      novo_simbolo = st.text_input("Símbolo da Moeda", value=emp["simbolo"])
-      if st.form_submit_button("Atualizar Configurações"):
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE empresa SET nome = ?, moeda = ?, simbolo = ? WHERE id = 1",
-            (novo_nome_emp, nova_moeda, novo_simbolo),
-        )
-        conn.commit()
-        conn.close()
-        st.success("Configurações atualizadas com sucesso!")
-        st.rerun()
+  # --- MÓD
