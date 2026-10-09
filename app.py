@@ -110,7 +110,7 @@ DICIONARIO = {
         "email_label": "Correo Electrónico del Destinatario",
         "codigo_label": "Ingrese el código recibido (6 dígitos)",
         "verificar": "Validar y Entrar",
-        "sucesso_envio": "¡Código enviado con éxito a la bandeja de entrada!",
+        "sucesso_envio": "¡Código enviado com éxito a la bandeja de entrada!",
         "sucesso_verif": "¡Acceso autorizado com éxito!",
         "erro_verif": "Código incorrecto. Inténtelo de nuevo.",
         "add_cliente": "Añadir Nuevo Cliente",
@@ -120,7 +120,7 @@ DICIONARIO = {
         "add_produto": "Añadir Nuevo Producto",
         "nome_produto": "Nombre del Producto",
         "preco_produto": "Precio",
-        "lista_produtos": "Productos en Stock",
+        "lista_produtos": "Produtos en Stock",
         "chat_ia": "Chatea con el Asistente IA",
         "pergunta_ia": "Escribe tu duda de gestión:",
         "enviar": "Enviar Pregunta",
@@ -288,3 +288,47 @@ else:
   elif menu == t["produtos"]:
     st.header(t["produtos"])
     nome_prod = st.text_input(t["nome_produto"])
+    
+    preco_prod = st.number_input(
+        f"{t['preco_produto']} ({simbolo_ativo})", min_value=0.0, format="%.2f"
+    )
+
+    if st.button(t["salvar"]):
+      if nome_prod:
+        st.session_state["produtos"].append(
+            {
+                "nome": nome_prod,
+                "preco": preco_prod,
+                "moeda": emp["moeda"],
+                "simbolo": simbolo_ativo,
+            }
+        )
+        st.success(f"Produto '{nome_prod}' adicionado com sucesso!")
+      else:
+        st.warning("Insira o nome do produto.")
+
+    st.subheader(t["lista_produtos"])
+    for prod in st.session_state["produtos"]:
+      valor_formatado = formatar_moeda(prod["preco"], prod["simbolo"])
+      st.write(f"- **{prod['nome']}**: {valor_formatado}")
+
+  elif menu == t["config"]:
+    st.header(t["config"])
+    st.subheader(t["empresa_setup"])
+
+    with st.form("form_empresa"):
+      novo_nome_empresa = st.text_input("Nome da Empresa", value=emp["nome"])
+      
+      paises_lista = list(PAISES_MOEDAS.keys())
+      pais_atual_idx = paises_lista.index(emp["pais"]) if emp["pais"] in paises_lista else 0
+      
+      novo_pais = st.selectbox("País de Operação", paises_lista, index=pais_atual_idx)
+      novo_pais_registro = st.selectbox(
+          "País de Registo", paises_lista, index=paises_lista.index(emp["pais_registro"]) if emp["pais_registro"] in paises_lista else 0
+      )
+
+      info_pais = PAISES_MOEDAS[novo_pais]
+      nova_moeda = info_pais["moeda"]
+      novo_simbolo = info_pais["simbolo"]
+      novo_idioma = info_pais["idioma"]
+      novo_fuso = info_pais
