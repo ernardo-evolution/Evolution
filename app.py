@@ -119,7 +119,7 @@ try:
         )
     """)
 
-  # Migrações seguras e isoladas
+  # Migrações seguras e isoladas para colunas em falta
   for col_def in [
       ("produtos", "quantidade_estoque", "INTEGER DEFAULT 0"),
       ("produtos", "estoque_minimo", "INTEGER DEFAULT 5"),
@@ -129,6 +129,9 @@ try:
       ("usuarios", "codigo_verificacao", "TEXT"),
       ("usuarios", "session_token", "TEXT"),
       ("usuarios", "token_expiry", "TEXT"),
+      ("empresa", "pais", "TEXT"),
+      ("empresa", "moeda", "TEXT"),
+      ("empresa", "simbolo", "TEXT"),
   ]:
     try:
       cursor.execute(f"ALTER TABLE {col_def[0]} ADD COLUMN {col_def[1]} {col_def[2]}")
@@ -187,16 +190,17 @@ def carregar_empresa():
     conn.close()
     if row:
       return {
-          "nome": row[0],
-          "pais": row[1],
-          "pais_registro": row[2],
-          "moeda": row[3],
-          "simbolo": row[4],
-          "idioma": row[5],
-          "fuso": row[6],
+          "nome": row[0] or "Evolution Corp",
+          "pais": row[1] or "Brasil",
+          "pais_registro": row[2] or "Brasil",
+          "moeda": row[3] or "BRL",
+          "simbolo": row[4] or "R$",
+          "idioma": row[5] or "Português",
+          "fuso": row[6] or "UTC-3",
       }
-  except:
-    pass
+  except Exception as e:
+    print(f"Erro ao carregar empresa: {e}")
+  
   return {
       "nome": "Evolution Corp Brasil",
       "pais": "Brasil",
@@ -209,15 +213,13 @@ def carregar_empresa():
 
 
 def enviar_email_verificacao(destinatario, codigo):
-  # Podes configurar os teus dados SMTP diretamente aqui ou usar st.secrets
   smtp_servidor = "smtp.gmail.com"
   smtp_porta = 587
-  # Exemplo usando st.secrets (recomendado no Streamlit Cloud) ou valores fixos de teste
   remetente = st.secrets.get("EMAIL_REMETENTE", "teu_email@gmail.com")
   senha_email = st.secrets.get("EMAIL_SENHA", "tua_senha_de_aplicacao")
 
   if remetente == "teu_email@gmail.com":
-    return False  # SMTP não configurado ainda
+    return False
 
   try:
     msg = MIMEMultipart()
@@ -365,7 +367,6 @@ with st.sidebar:
 if not st.session_state["autenticado"]:
   st.title(t["titulo"])
 
-  # Se houver um registo a aguardar confirmação de código por e-mail
   if st.session_state["aguardando_verificacao"]:
     st.warning(
         "🔒 Conta pendente de ativação. Enviámos um código de 6 dígitos para o"
@@ -479,7 +480,6 @@ if not st.session_state["autenticado"]:
               st.error("Este e-mail já está registado.")
               conn.close()
             else:
-              # Gerar código aleatório de 6 dígitos
               codigo_verif = str(random.randint(100000, 999999))
               cursor.execute(
                   "INSERT INTO usuarios (nome, email, nivel, ativo,"
@@ -494,7 +494,6 @@ if not st.session_state["autenticado"]:
               conn.commit()
               conn.close()
 
-              # Tentar enviar e-mail
               enviou = enviar_email_verificacao(
                   novo_email.strip(), codigo_verif
               )
@@ -508,7 +507,6 @@ if not st.session_state["autenticado"]:
                 )
                 st.rerun()
               else:
-                # Caso o SMTP não esteja configurado, exibe o código no ecrã para testes imediatos
                 st.session_state["aguardando_verificacao"] = (
                     novo_email.strip()
                 )
@@ -643,3 +641,254 @@ else:
           st.rerun()
         else:
           st.warning("O nome do produto é obrigatório.")
+
+    st.markdown("---")
+    st.subheader("Catálogo de Produtos")
+    try:
+      conn = sqlite3.connect(DB_FILE)
+      cursor = conn.cursor()
+      cursor.execute(
+          "SELECT id, nome, preco, quantidade_estoque, estoque_minimo FROM"
+          " produtos"
+      )
+      produtos = cursor.fetchall()
+      conn.close()
+      if produtos:
+        for pr in produtos:
+          st.markdown(
+              f"**ID:** {pr[0]} | **Produto:** {pr[1]} | **Preço:**"
+              f" {formatar_moeda(pr[2])} | **Estoque:** {pr[3]} (Mín:"
+              f" {pr[4]})"
+          )
+      else:
+        st.info("Nenhum produto registado.")
+    except Exception as e:
+      st.error(f"Erro ao listar produtos: {e}")
+
+  # --- MÓDULO: ESTOQUE ---
+  elif menu == t["estoque"]:
+    st.header("🏭 Controlo de Estoque")
+    try:
+      conn = sqlite3.connect(DB_FILE)
+      cursor = conn.cursor()
+      cursor.execute(
+          "SELECT id, nome, quantidade_estoque, estoque_minimo FROM produtos"
+      )
+      prods = cursor.fetchall()
+      conn.close()
+      if prods:
+        for pr in prods:
+          status_est = "⚠️ BAIXO" if pr[2] <= pr[3] else "✅ Normal"
+          st.markdown(
+              f"**{pr[1]}** — Quantidade: **{pr[2]}** | Mínimo: {pr[3]} |"
+              f" Estado: {status_est}"
+          )
+      else:
+        st.info("Sem produtos no estoque.")
+    except Exception as e:
+      st.error(f"Erro ao consultar estoque: {e}")
+
+  # --- MÓDULO: VENDAS ---
+  elif menu == t["vendas"]:
+    st.header("🛒 Registar Venda")
+    try:
+      conn = sqlite3.connect(DB_FILE)
+      cursor = conn.cursor()
+      cursor.execute("SELECT nome FROM clientes")
+      cli_list = [c[0] for c in cursor.fetchall()]
+      cursor.execute(
+          "SELECT nome, preco, quantidade_estoque FROM produtos WHERE"
+          " quantidade_estoque > 0"
+      )
+      prod_data = cursor.fetchall()
+      conn.close()
+
+      if not cli_list:
+        st.warning("⚠️ Não existem clientes registados. Adicione clientes primeiro no menu 'Clientes'.")
+      elif not prod_data:
+        st.warning("⚠️ Não existem produtos com estoque disponível para venda. Adicione produtos ou reponha o estoque.")
+      else:
+        prod_dict = {p[0]: {"preco": p[1], "estoque": p[2]} for p in prod_data}
+        with st.form("form_registar_venda"):
+          cli_sel = st.selectbox("Cliente", cli_list)
+          prod_sel = st.selectbox("Produto", list(prod_dict.keys()))
+          qtd_venda = st.number_input("Quantidade", min_value=1, value=1)
+          btn_vender = st.form_submit_button("Concluir Venda")
+
+          if btn_vender:
+            preco_unit = prod_dict[prod_sel]["preco"]
+            estoque_atual = prod_dict[prod_sel]["estoque"]
+            if qtd_venda > estoque_atual:
+              st.error("Quantidade superior ao estoque disponível!")
+            else:
+              val_total = qtd_venda * preco_unit
+              data_h = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+              conn = sqlite3.connect(DB_FILE)
+              cursor = conn.cursor()
+              cursor.execute(
+                  "INSERT INTO vendas (cliente, produto, quantidade,"
+                  " valor_unitario, valor_total, moeda_original, data_hora)"
+                  " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  (
+                      cli_sel,
+                      prod_sel,
+                      qtd_venda,
+                      preco_unit,
+                      val_total,
+                      emp["moeda"],
+                      data_h,
+                  ),
+              )
+              cursor.execute(
+                  "UPDATE produtos SET quantidade_estoque = quantidade_estoque -"
+                  " ? WHERE nome = ?",
+                  (qtd_venda, prod_sel),
+              )
+              conn.commit()
+              conn.close()
+
+              registrar_historico(
+                  st.session_state["usuario_atual"],
+                  "Nova Venda",
+                  f"Venda de {qtd_venda}x {prod_sel} para {cli_sel}.",
+              )
+              st.success("Venda efetuada com sucesso e estoque atualizado!")
+              st.rerun()
+    except Exception as e:
+      st.error(f"Erro no módulo de vendas: {e}")
+
+  # --- MÓDULO: PEDIDOS ---
+  elif menu == t["pedidos"]:
+    st.header("📋 Gestão de Pedidos")
+    try:
+      conn = sqlite3.connect(DB_FILE)
+      cursor = conn.cursor()
+      cursor.execute(
+          "SELECT id, cliente, produto, quantidade, status_pedido FROM pedidos"
+      )
+      pedidos = cursor.fetchall()
+      conn.close()
+      if pedidos:
+        for p in pedidos:
+          st.markdown(
+              f"**Pedido #{p[0]}** | Cliente: {p[1]} | Produto: {p[2]} | Qtd:"
+              f" {p[3]} | Estado: **{p[4]}**"
+          )
+      else:
+        st.info("Nenhum pedido registado.")
+    except Exception as e:
+      st.error(f"Erro ao carregar pedidos: {e}")
+
+  # --- MÓDULO: RELATÓRIOS ---
+  elif menu == t["relatorios"]:
+    st.header("📈 Relatórios do Sistema")
+    st.markdown(
+        "Aqui pode visualizar o histórico de ações e relatórios financeiros."
+    )
+    try:
+      conn = sqlite3.connect(DB_FILE)
+      cursor = conn.cursor()
+      cursor.execute("SELECT usuario, acao, detalhes, data_hora FROM historico")
+      hist = cursor.fetchall()
+      conn.close()
+      if hist:
+        for h in hist:
+          st.text(f"[{h[3]}] {h[0]} - {h[1]}: {h[2]}")
+      else:
+        st.info("Sem registos no histórico.")
+    except Exception as e:
+      st.error(f"Erro ao carregar relatórios: {e}")
+
+  # --- MÓDULO: TAREFAS ---
+  elif menu == t["tarefas"]:
+    st.header("📝 Gestão de Tarefas")
+    with st.form("form_tarefa"):
+      t_titulo = st.text_input("Título da Tarefa")
+      t_resp = st.text_input("Responsável")
+      t_prioridade = st.selectbox("Prioridade", ["Baixa", "Média", "Alta"])
+      if st.form_submit_button("Criar Tarefa"):
+        if t_titulo:
+          conn = sqlite3.connect(DB_FILE)
+          cursor = conn.cursor()
+          cursor.execute(
+              "INSERT INTO tarefas (titulo, responsavel, prioridade, status,"
+              " data_criacao) VALUES (?, ?, ?, ?, ?)",
+              (
+                  t_titulo,
+                  t_resp,
+                  t_prioridade,
+                  "Pendente",
+                  datetime.now().strftime("%d/%m/%Y"),
+              ),
+          )
+          conn.commit()
+          conn.close()
+          st.success("Tarefa criada!")
+          st.rerun()
+    try:
+      conn = sqlite3.connect(DB_FILE)
+      cursor = conn.cursor()
+      cursor.execute(
+          "SELECT titulo, responsavel, prioridade, status FROM tarefas"
+      )
+      tarefas = cursor.fetchall()
+      conn.close()
+      if tarefas:
+        for tf in tarefas:
+          st.markdown(
+              f"**{tf[0]}** | Resp: {tf[1]} | Prioridade: {tf[2]} | Estado:"
+              f" {tf[3]}"
+          )
+    except:
+      pass
+
+  # --- MÓDULO: CONFIGURAÇÕES ---
+  elif menu == t["config"]:
+    st.header("⚙️ Configurações da Empresa e Moeda")
+    try:
+      with st.form("form_config"):
+        novo_nome_emp = st.text_input("Nome da Empresa", value=emp.get("nome", "Evolution Corp"))
+
+        paises_disponiveis = list(PAISES_MOEDAS.keys())
+        pais_atual = emp.get("pais", "Brasil")
+        idx_pais = (
+            paises_disponiveis.index(pais_atual)
+            if pais_atual in paises_disponiveis
+            else 0
+        )
+
+        novo_pais = st.selectbox(
+            "País da Empresa", paises_disponiveis, index=idx_pais
+        )
+
+        moeda_preview = PAISES_MOEDAS[novo_pais]["moeda"]
+        simbolo_preview = PAISES_MOEDAS[novo_pais]["simbolo"]
+        st.info(
+            f"Moeda associada ao país escolhido: **{moeda_preview}**"
+            f" ({simbolo_preview})"
+        )
+
+        if st.form_submit_button("Atualizar Configurações"):
+          info_selecionada = PAISES_MOEDAS[novo_pais]
+          conn = sqlite3.connect(DB_FILE)
+          cursor = conn.cursor()
+          cursor.execute(
+              "UPDATE empresa SET nome = ?, pais = ?, moeda = ?, simbolo = ? WHERE"
+              " id = 1",
+              (
+                  novo_nome_emp,
+                  novo_pais,
+                  info_selecionada["moeda"],
+                  info_selecionada["simbolo"],
+              ),
+          )
+          conn.commit()
+          conn.close()
+          st.success(
+              "Configurações atualizadas com sucesso! Símbolo alterado para"
+              f" {info_selecionada['simbolo']}."
+          )
+          st.rerun()
+    except Exception as e:
+      st.error(f"Erro ao carregar as configurações: {e}")
