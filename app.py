@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilos CSS personalizados (Layout moderno, botões e animações)
+# Estilos CSS personalizados
 st.markdown("""
     <style>
     .main {
@@ -34,19 +34,19 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Inicializar estados da sessão (Sessão limpa por padrão)
+# Inicializar estados da sessão
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "step" not in st.session_state:
-    st.session_state.step = "signup"  # signup, verify, app
+    st.session_state.step = "signup"
 if "verification_code" not in st.session_state:
     st.session_state.verification_code = None
 if "temp_user_data" not in st.session_state:
     st.session_state.temp_user_data = {}
 if "clients" not in st.session_state:
-    st.session_state.clients = []  # Zero clientes padrão (estado limpo)
+    st.session_state.clients = []
 
-# --- FUNÇÃO DE ENVIO DE E-MAIL VIA EMAILJS (COM CHAVE PRIVADA) ---
+# --- FUNÇÃO DE ENVIO DE E-MAIL COM DEBUG DE ERRO ---
 def send_emailjs_code(to_email, code):
     url = "https://api.emailjs.com/api/v1.0/email/send"
     payload = {
@@ -61,16 +61,15 @@ def send_emailjs_code(to_email, code):
     }
     try:
         response = requests.post(url, json=payload)
-        return response.status_code == 200
+        # Retorna o status e o texto da resposta para sabermos o motivo se falhar
+        return response.status_code, response.text
     except Exception as e:
-        print(f"Erro ao enviar e-mail: {e}")
-        return False
+        return 500, str(e)
 
 # --- TELA DE REGISTO / LOGIN ---
 if not st.session_state.logged_in:
     
     if st.session_state.step == "signup":
-        # Layout de duas colunas (Esquerda: Formulário em Português | Direita: Ilustração Corporativa)
         col1, col2 = st.columns([1, 1], gap="large")
         
         with col1:
@@ -91,27 +90,23 @@ if not st.session_state.logged_in:
                     elif not terms:
                         st.error("Deve aceitar os termos e políticas.")
                     else:
-                        # Gerar código de verificação de 6 dígitos
                         code = str(random.randint(100000, 999999))
                         st.session_state.verification_code = code
                         st.session_state.temp_user_data = {"name": name, "email": email}
                         
-                        # Disparar e-mail real via EmailJS com autenticação completa
                         with st.spinner("A enviar código de verificação por e-mail... 🚀💨"):
-                            success = send_emailjs_code(email, code)
+                            status_code, response_text = send_emailjs_code(email, code)
                             
-                        if success:
+                        if status_code == 200:
                             st.success(f"E-mail enviado com sucesso para {email}!")
+                            st.session_state.step = "verify"
+                            st.rerun()
                         else:
-                            st.error("Falha ao enviar o e-mail. Verifique as credenciais no painel.")
-                            
-                        st.session_state.step = "verify"
-                        st.rerun()
+                            st.error(f"Erro ao enviar o e-mail (Código {status_code}): {response_text}")
 
             st.write("Já tem uma conta? **Entrar**")
             
         with col2:
-            # Ilustração corporativa de equipa
             st.image(
                 "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=80", 
                 use_container_width=True
@@ -135,10 +130,13 @@ if not st.session_state.logged_in:
         if st.button("Reenviar Código"):
             code = str(random.randint(100000, 999999))
             st.session_state.verification_code = code
-            send_emailjs_code(st.session_state.temp_user_data.get('email'), code)
-            st.success("Novo código enviado!")
+            status_code, response_text = send_emailjs_code(st.session_state.temp_user_data.get('email'), code)
+            if status_code == 200:
+                st.success("Novo código enviado!")
+            else:
+                st.error(f"Erro ao reenviar: {response_text}")
 
-# --- APLICAÇÃO PRINCIPAL (ESTADO LIMPO / ZERO CLIENTES) ---
+# --- APLICAÇÃO PRINCIPAL ---
 else:
     st.sidebar.title("A Evolution 🚀")
     st.sidebar.write(f"Utilizador: **{st.session_state.temp_user_data.get('name', 'Admin')}**")
