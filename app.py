@@ -10,12 +10,35 @@ import streamlit as st
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
-    page_title="A Evolution Gestão Online", page_icon="🚀", layout="wide"
+    page_title="A Evolution Gestão Online",
+    page_icon="🚀",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
+
+# --- 2. ESTILIZAÇÃO VISUAL PROFISSIONAL (TEMA ESCURO GRAFITE) ---
+st.markdown("""
+    <style>
+    .stApp {
+        background-color: #0e1117;
+        color: #e2e8f0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    h1, h2, h3 {
+        color: #f0f6fc;
+        font-weight: 600;
+        letter-spacing: -0.025em;
+    }
+    [data-testid="stSidebar"] {
+        background-color: #11151c;
+        border-right: 1px solid #21262d;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 DB_FILE = "evolution_gestao.db"
 
-# --- 2. INICIALIZAÇÃO SEGURA DA BASE DE DADOS ---
+# --- 3. INICIALIZAÇÃO SEGURA DA BASE DE DADOS ---
 try:
   conn = sqlite3.connect(DB_FILE)
   cursor = conn.cursor()
@@ -119,7 +142,7 @@ try:
         )
     """)
 
-  # Migrações seguras e isoladas para colunas em falta
+  # Migrações seguras e isoladas
   for col_def in [
       ("produtos", "quantidade_estoque", "INTEGER DEFAULT 0"),
       ("produtos", "estoque_minimo", "INTEGER DEFAULT 5"),
@@ -164,7 +187,7 @@ except Exception as db_err:
   st.stop()
 
 
-# --- 3. MAPEAMENTO DE PAÍSES E MOEDAS ---
+# --- 4. MAPEAMENTO DE PAÍSES E MOEDAS ---
 PAISES_MOEDAS = {
     "Brasil": {"moeda": "BRL", "simbolo": "R$", "idioma": "Português"},
     "Portugal": {"moeda": "EUR", "simbolo": "€", "idioma": "Português"},
@@ -174,10 +197,11 @@ PAISES_MOEDAS = {
         "idioma": "English",
     },
     "Espanha": {"moeda": "EUR", "simbolo": "€", "idioma": "Español"},
+    "Reino Unido": {"moeda": "GBP", "simbolo": "£", "idioma": "English"},
 }
 
 
-# --- 4. FUNÇÕES AUXILIARES E DE E-MAIL ---
+# --- 5. FUNÇÕES AUXILIARES E DE E-MAIL ---
 def carregar_empresa():
   try:
     conn = sqlite3.connect(DB_FILE)
@@ -276,7 +300,7 @@ t = {
     "sair": "Terminar Sessão",
 }
 
-# --- 5. GESTÃO DE SESSÃO E PERSISTÊNCIA ---
+# --- 6. GESTÃO DE SESSÃO E PERSISTÊNCIA ---
 if "autenticado" not in st.session_state:
   st.session_state["autenticado"] = False
 if "usuario_atual" not in st.session_state:
@@ -327,17 +351,20 @@ def formatar_moeda(valor):
   )
 
 
-# --- 6. BARRA LATERAL ---
+# --- 7. BARRA LATERAL REFINADA ---
 menu = t["dashboard"]
 with st.sidebar:
+  st.markdown(f"### {emp['nome']}")
+  st.markdown("---")
   if st.session_state["autenticado"]:
-    st.info(
-        f"👤 Utilizador: **{st.session_state['usuario_atual']}**\n🔑 Nível:"
-        f" **{st.session_state['nivel_acesso']}**"
+    st.markdown(
+        f"👤 **{st.session_state['usuario_atual']}**  \n🔑 Nível:"
+        f" `{st.session_state['nivel_acesso']}`"
     )
     st.markdown("---")
+    
     menu = st.radio(
-        "Navegação",
+        "Navegação Principal",
         [
             t["dashboard"],
             t["clientes"],
@@ -349,9 +376,10 @@ with st.sidebar:
             t["tarefas"],
             t["config"],
         ],
+        label_visibility="collapsed",
     )
     st.markdown("---")
-    if st.button(t["sair"]):
+    if st.button("Terminar Sessão", use_container_width=True):
       if "session_token" in st.query_params:
         del st.query_params["session_token"]
       st.session_state["autenticado"] = False
@@ -360,10 +388,10 @@ with st.sidebar:
       st.success("Sessão encerrada.")
       st.rerun()
   else:
-    st.warning("⚠️ Efetue login para aceder.")
+    st.warning("⚠️ Efetue login para aceder ao sistema.")
 
 
-# --- 7. INTERFACE PRINCIPAL ---
+# --- 8. INTERFACE PRINCIPAL ---
 if not st.session_state["autenticado"]:
   st.title(t["titulo"])
 
@@ -519,14 +547,19 @@ if not st.session_state["autenticado"]:
             st.warning("Preencha todos os campos.")
 
 else:
-  st.title(t["titulo"])
-
-  # --- MÓDULO: DASHBOARD ---
+  # --- MÓDULO: DASHBOARD EXECUTIVO REFINADO ---
   if menu == t["dashboard"]:
-    st.header("📊 Dashboard Executivo e Operacional")
+    st.markdown("## 📊 Dashboard Executivo")
+    st.markdown(
+        f"Visão geral das operações, indicadores financeiros e alertas de"
+        f" desempenho para **{emp['nome']}**."
+    )
+    st.markdown("---")
+
     try:
       conn = sqlite3.connect(DB_FILE)
       cursor = conn.cursor()
+      
       cursor.execute("SELECT SUM(valor_total) FROM vendas")
       faturamento = cursor.fetchone()[0] or 0.0
 
@@ -546,15 +579,103 @@ else:
           " estoque_minimo"
       )
       est_baixo = cursor.fetchone()[0] or 0
-      conn.close()
 
+      # Cartões de Métricas Executivas
       c1, c2, c3, c4 = st.columns(4)
-      c1.metric("Faturamento Total", formatar_moeda(faturamento))
-      c2.metric("Pedidos Pendentes", ped_pend)
-      c3.metric("Em Processamento", ped_proc)
-      c4.metric("Estoque Baixo", est_baixo, delta_color="inverse")
+      with c1:
+        st.metric("Faturamento Total", formatar_moeda(faturamento))
+      with c2:
+        st.metric("Pedidos Pendentes", ped_pend)
+      with c3:
+        st.metric("Em Processamento", ped_proc)
+      with c4:
+        st.metric("Estoque Baixo", est_baixo, delta_color="inverse")
+
+      st.markdown("---")
+
+      # Filtro de Período Real
+      col_f1, col_f2 = st.columns([2, 4])
+      with col_f1:
+        filtro_periodo = st.selectbox(
+            "Período de Análise",
+            ["Todos os Registos", "Últimos 30 Dias", "Últimos 7 Dias"],
+        )
+
+      st.markdown("### 📈 Tendência de Vendas")
+      cursor.execute("SELECT data_hora, valor_total FROM vendas ORDER BY id ASC")
+      vendas_raw = cursor.fetchall()
+
+      if vendas_raw:
+        import pandas as pd
+        df_vendas = pd.DataFrame(vendas_raw, columns=["data", "valor"])
+        try:
+          df_vendas["data_dt"] = pd.to_datetime(df_vendas["data"], format="%d/%m/%Y %H:%M:%S", errors="coerce")
+          df_vendas = df_vendas.dropna(subset=["data_dt"])
+          if filtro_periodo == "Últimos 7 Dias":
+            limite = datetime.now() - timedelta(days=7)
+            df_vendas = df_vendas[df_vendas["data_dt"] >= limite]
+          elif filtro_periodo == "Últimos 30 Dias":
+            limite = datetime.now() - timedelta(days=30)
+            df_vendas = df_vendas[df_vendas["data_dt"] >= limite]
+
+          if not df_vendas.empty:
+            df_grouped = df_vendas.groupby(df_vendas["data_dt"].dt.date)["valor"].sum().reset_index()
+            df_grouped.columns = ["Data", "Valor Total"]
+            df_grouped = df_grouped.set_index("Data")
+            st.line_chart(df_grouped)
+          else:
+            st.info("Nenhum registo de vendas encontrado para o período selecionado.")
+        except Exception:
+          st.info("A aguardar mais dados de transações para gerar o gráfico temporal.")
+      else:
+        st.info("Sem dados de vendas registados. Efetue vendas no módulo correspondente para gerar gráficos.")
+
+      st.markdown("---")
+
+      # Secções Inferiores Organizadas
+      col_sec1, col_sec2 = st.columns(2)
+
+      with col_sec1:
+        st.markdown("### 🛒 Vendas Recentes")
+        cursor.execute("SELECT cliente, produto, quantidade, valor_total, data_hora FROM vendas ORDER BY id DESC LIMIT 5")
+        vendas_recentes = cursor.fetchall()
+        if vendas_recentes:
+          for vr in vendas_recentes:
+            st.markdown(f"- **{vr[0]}** adquiriu {vr[2]}x *{vr[1]}* — **{formatar_moeda(vr[3])}** `[{vr[4]}]`")
+        else:
+          st.info("Nenhuma venda recente registada.")
+
+        st.markdown("### ⚠️ Alertas de Estoque Baixo")
+        cursor.execute("SELECT nome, quantidade_estoque, estoque_minimo FROM produtos WHERE quantidade_estoque <= estoque_minimo")
+        produtos_criticos = cursor.fetchall()
+        if produtos_criticos:
+          for pc in produtos_criticos:
+            st.markdown(f"- Produto **{pc[0]}** com stock crítico: **{pc[1]}** unidades (Mínimo: {pc[2]})")
+        else:
+          st.success("Todos os produtos estão com níveis de stock seguros.")
+
+      with col_sec2:
+        st.markdown("### 📋 Pedidos que Precisam de Atenção")
+        cursor.execute("SELECT id, cliente, produto, status_pedido FROM pedidos WHERE status_pedido != 'Concluído' LIMIT 5")
+        pedidos_atencao = cursor.fetchall()
+        if pedidos_atencao:
+          for pa in pedidos_atencao:
+            st.markdown(f"- **Pedido #{pa[0]}** ({pa[1]}) - Produto: {pa[2]} | Estado: `{pa[3]}`")
+        else:
+          st.success("Não existem pedidos pendentes de atenção.")
+
+        st.markdown("### 🕒 Atividades Recentes do Sistema")
+        cursor.execute("SELECT usuario, acao, detalhes, data_hora FROM historico ORDER BY id DESC LIMIT 5")
+        historico_recente = cursor.fetchall()
+        if historico_recente:
+          for hr in historico_recente:
+            st.text(f"[{hr[3]}] {hr[0]} -> {hr[1]}: {hr[2]}")
+        else:
+          st.info("Sem atividade recente registada no histórico.")
+
+      conn.close()
     except Exception as e:
-      st.error(f"Erro ao carregar dashboard: {e}")
+      st.error(f"Erro ao carregar os dados do dashboard: {e}")
 
   # --- MÓDULO: CLIENTES ---
   elif menu == t["clientes"]:
