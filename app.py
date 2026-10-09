@@ -581,4 +581,205 @@ else:
       ped_pend = cursor.fetchone()[0] or 0
 
       cursor.execute(
-          "SELECT COUNT(*) FROM produtos WHERE quantidade_
+          "SELECT COUNT(*) FROM produtos WHERE quantidade_estoque <= estoque_minimo"
+      )
+      est_baixo = cursor.fetchone()[0] or 0
+
+      c1, c2, c3, c4 = st.columns(4)
+      with c1:
+        st.metric("Faturamento Total", formatar_moeda(faturamento))
+      with c2:
+        st.metric("Pedidos Pendentes", ped_pend)
+      with c3:
+        st.metric("Em Processamento", ped_proc)
+      with c4:
+        st.metric("Estoque Baixo", est_baixo, delta_color="inverse")
+
+      st.markdown("---")
+
+      col_f1, col_f2 = st.columns([2, 4])
+      with col_f1:
+        filtro_periodo = st.selectbox(
+            "Período de Análise",
+            ["Todos os Registos", "Últimos 30 Dias", "Últimos 7 Dias"],
+        )
+
+      st.markdown("### 📈 Tendência de Vendas")
+      cursor.execute("SELECT data_hora, valor_total FROM vendas ORDER BY id ASC")
+      vendas_raw = cursor.fetchall()
+
+      if vendas_raw:
+        import pandas as pd
+        df_vendas = pd.DataFrame(vendas_raw, columns=["data", "valor"])
+        try:
+          df_vendas["data_dt"] = pd.to_datetime(df_vendas["data"], format="%d/%m/%Y %H:%M:%S", errors="coerce")
+          df_vendas = df_vendas.dropna(subset=["data_dt"])
+          if filtro_periodo == "Últimos 7 Dias":
+            limite = datetime.now() - timedelta(days=7)
+            df_vendas = df_vendas[df_vendas["data_dt"] >= limite]
+          elif filtro_periodo == "Últimos 30 Dias":
+            limite = datetime.now() - timedelta(days=30)
+            df_vendas = df_vendas[df_vendas["data_dt"] >= limite]
+
+          if not df_vendas.empty:
+            df_grouped = df_vendas.groupby(df_vendas["data_dt"].dt.date)["valor"].sum().reset_index()
+            df_grouped.columns = ["Data", "Valor Total"]
+            df_grouped = df_grouped.set_index("Data")
+            st.line_chart(df_grouped)
+          else:
+            st.info("Nenhum registo de vendas encontrado para o período selecionado.")
+        except Exception:
+          st.info("A aguardar mais dados de transações para gerar o gráfico temporal.")
+      else:
+        st.info("Sem dados de vendas registados. Efetue vendas no módulo correspondente para gerar gráficos.")
+
+      st.markdown("---")
+
+      col_sec1, col_sec2 = st.columns(2)
+
+      with col_sec1:
+        st.markdown("### 🛒 Vendas Recentes")
+        cursor.execute("SELECT cliente, produto, quantidade, valor_total, data_hora FROM vendas ORDER BY id DESC LIMIT 5")
+        vendas_recentes = cursor.fetchall()
+        if vendas_recentes:
+          for vr in vendas_recentes:
+            st.markdown(f"- **{vr[0]}** adquiriu {vr[2]}x *{vr[1]}* — **{formatar_moeda(vr[3])}** `[{vr[4]}]`")
+        else:
+          st.info("Nenhuma venda recente registada.")
+
+        st.markdown("### ⚠️ Alertas de Estoque Baixo")
+        cursor.execute("SELECT nome, quantidade_estoque, estoque_minimo FROM produtos WHERE quantidade_estoque <= estoque_minimo")
+        produtos_criticos = cursor.fetchall()
+        if produtos_criticos:
+          for pc in produtos_criticos:
+            st.markdown(f"- Produto **{pc[0]}** com stock crítico: **{pc[1]}** unidades (Mínimo: {pc[2]})")
+        else:
+          st.success("Todos os produtos estão com níveis de stock seguros.")
+
+      with col_sec2:
+        st.markdown("### 📋 Pedidos que Precisam de Atenção")
+        cursor.execute("SELECT id, cliente, produto, status_pedido FROM pedidos WHERE status_pedido != 'Concluído' LIMIT 5")
+        pedidos_atencao = cursor.fetchall()
+        if pedidos_atencao:
+          for pa in pedidos_atencao:
+            st.markdown(f"- **Pedido #{pa[0]}** ({pa[1]}) - Produto: {pa[2]} | Estado: `{pa[3]}`")
+        else:
+          st.success("Não existem pedidos pendentes de atenção.")
+
+        st.markdown("### 🕒 Atividades Recentes do Sistema")
+        cursor.execute("SELECT usuario, acao, detalhes, data_hora FROM historico ORDER BY id DESC LIMIT 5")
+        historico_recente = cursor.fetchall()
+        if historico_recente:
+          for hr in historico_recente:
+            st.text(f"[{hr[3]}] {hr[0]} -> {hr[1]}: {hr[2]}")
+        else:
+          st.info("Sem atividade recente registada no histórico.")
+
+      conn.close()
+    except Exception as e:
+      st.error(f"Erro ao carregar os dados do dashboard: {e}")
+
+  # --- MÓDULO: CLIENTES ---
+  elif menu == t["clientes"]:
+    st.header("👥 Gestão de Clientes")
+    with st.form("form_add_cliente"):
+      st.subheader("Adicionar Novo Cliente")
+      c_nome = st.text_input("Nome do Cliente")
+      c_email = st.text_input("E-mail")
+      c_tel = st.text_input("Telefone")
+      c_pais = st.selectbox("País", list(PAISES_MOEDAS.keys()))
+      if st.form_submit_button("Guardar Cliente"):
+        if c_nome:
+          try:
+            conn = sqlite3.connect(DB_FILE)
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO clientes (nome, email, telefone, pais) VALUES (?, ?, ?, ?)",
+                (c_nome, c_email, c_tel, c_pais),
+            )
+            conn.commit()
+            conn.close()
+            registrar_historico(
+                st.session_state["usuario_atual"],
+                "Novo Cliente",
+                f"Cliente {c_nome} registado.",
+            )
+            st.success("Cliente registado com sucesso!")
+            st.rerun()
+          except Exception as e:
+            st.error(f"Erro ao gravar cliente na base de dados: {e}")
+        else:
+          st.warning("O nome do cliente é obrigatório.")
+
+    st.markdown("---")
+    st.subheader("Lista de Clientes")
+    try:
+      conn = sqlite3.connect(DB_FILE)
+      cursor = conn.cursor()
+      cursor.execute("SELECT id, nome, email, telefone, pais FROM clientes")
+      clientes = cursor.fetchall()
+      conn.close()
+      if clientes:
+        for cl in clientes:
+          st.markdown(
+              f"**ID:** {cl[0]} | **Nome:** {cl[1]} | **E-mail:** {cl[2]} |"
+              f" **Telefone:** {cl[3]} | **País:** {cl[4]}"
+          )
+      else:
+        st.info("Nenhum cliente registado.")
+    except Exception as e:
+      st.error(f"Erro ao listar clientes: {e}")
+
+  # --- MÓDULO: PRODUTOS ---
+  elif menu == t["produtos"]:
+    st.header("📦 Gestão de Produtos")
+    with st.form("form_add_produto"):
+      st.subheader("Registar Novo Produto")
+      p_nome = st.text_input("Nome do Produto")
+      p_preco = st.number_input("Preço Unitário", min_value=0.0, format="%.2f")
+      p_qtd = st.number_input("Quantidade em Estoque", min_value=0, value=10)
+      p_min = st.number_input("Estoque Mínimo", min_value=0, value=4)
+      if st.form_submit_button("Guardar Produto"):
+        if p_nome:
+          conn = sqlite3.connect(DB_FILE)
+          cursor = conn.cursor()
+          cursor.execute(
+              "INSERT INTO produtos (nome, preco, quantidade_estoque,"
+              " estoque_minimo, moeda, simbolo) VALUES (?, ?, ?, ?, ?, ?)",
+              (
+                  p_nome,
+                  p_preco,
+                  p_qtd,
+                  p_min,
+                  emp["moeda"],
+                  emp["simbolo"],
+              ),
+          )
+          conn.commit()
+          conn.close()
+          registrar_historico(
+              st.session_state["usuario_atual"],
+              "Novo Produto",
+              f"Produto {p_nome} adicionado.",
+          )
+          st.success("Produto registado com sucesso!")
+          st.rerun()
+        else:
+          st.warning("O nome do produto é obrigatório.")
+
+    st.markdown("---")
+    st.subheader("Catálogo de Produtos")
+    try:
+      conn = sqlite3.connect(DB_FILE)
+      cursor = conn.cursor()
+      cursor.execute(
+          "SELECT id, nome, preco, quantidade_estoque, estoque_minimo FROM"
+          " produtos"
+      )
+      produtos = cursor.fetchall()
+      conn.close()
+      if produtos:
+        for pr in produtos:
+          st.markdown(
+              f"**ID:** {pr[0]} | **Produto:** {pr[1]} | **Preço:**"
+              f" {formatar_moeda(pr[2])} | **Estoque:**
