@@ -111,7 +111,7 @@ if "produtos" not in st.session_state:
 
 # --- SELETOR DE IDIOMA NA BARRA LATERAL ---
 with st.sidebar:
-  st.image("https://img.icons8.com/color/96/combo-chart--v1.png", width=70)
+  st.image("https://images.unsplash.com/photo-1551836022-d5d88e9218df?q=80&w=200&auto=format&fit=crop", width=70)
   idioma_atual = st.selectbox("Idioma / Language", ["Português", "English", "Español"])
   t = DICIONARIO[idioma_atual]
 
@@ -136,7 +136,7 @@ def disparar_emailjs(email_destino, codigo):
       "user_id": USER_ID,
       "accessToken": ACCESS_TOKEN,
       "template_params": {
-          "to_email": email_destino,  # Vai direto para o e-mail da outra pessoa
+          "to_email": email_destino,  # Direto para a caixa de entrada da outra pessoa
           "email": email_destino,
           "codigo": codigo,
       },
@@ -148,12 +148,11 @@ def disparar_emailjs(email_destino, codigo):
     return False
 
 
-# --- BLOCO DE SEGURANÇA / LOGIN (ESTILO DUAS COLUNAS COM IMAGEM) ---
+# --- BLOCO DE SEGURANÇA / LOGIN (ESTILO DUAS COLUNAS COM A ILUSTRAÇÃO CORPORATIVA) ---
 if not st.session_state["autenticado"]:
   st.title(t["titulo"])
   st.markdown("### Acesso Restrito - Validação por E-mail")
   
-  # Criamos duas colunas imitando o layout das tuas referências (Formulário vs Imagem/Plantas)
   col1, col2 = st.columns([1, 1], gap="large")
 
   with col1:
@@ -186,14 +185,14 @@ if not st.session_state["autenticado"]:
           st.error(t["erro_verif"])
 
   with col2:
-    # Imagem decorativa de plantas/estética corporativa tal como pediste no estilo da imagem 2
+    # Utilizando a imagem de ilustração corporativa que enviaste
     st.image(
-        "https://images.unsplash.com/photo-1545241047-6083a3684587?q=80&w=1000&auto=format&fit=crop",
-        caption="A Evolution Gestão Online - Segurança em Primeiro Lugar",
+        "https://img.freepik.com/free-vector/business-team-brainstorming-discussing-startup-project_74855-6908.jpg",
+        caption="A Evolution Gestão Online - Trabalho em Equipa e Gestão",
         use_column_width=True
     )
 
-# --- APLICAÇÃO PRINCIPAL (SÓ ABRE APÓS AUTENTICAÇÃO BEM-SUCEDIDA) ---
+# --- APLICAÇÃO PRINCIPAL (SÓ ABRE APÓS AUTENTICAÇÃO) ---
 else:
   st.title(t["titulo"])
 
