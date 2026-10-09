@@ -2,6 +2,7 @@ from datetime import datetime
 import os
 import random
 import sqlite3
+import pycountry
 import requests
 import streamlit as st
 
@@ -24,7 +25,7 @@ DB_FILE = "evolution_gestao.db"
 def init_db():
   conn = sqlite3.connect(DB_FILE)
   cursor = conn.cursor()
-  # Tabela Empresa com campos completos
+  # Tabela Empresa com preferências independentes
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS empresa (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,7 +38,7 @@ def init_db():
             fuso TEXT
         )
     """)
-  # Tabela Clientes com cadastro detalhado (Nome, E-mail, Telefone, País)
+  # Tabela Clientes com cadastro detalhado
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS clientes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,8 +82,8 @@ def init_db():
         " fuso) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
             "Evolution Corp Brasil",
-            "Brasil",
-            "Brasil",
+            "Brazil",
+            "Brazil",
             "BRL",
             "R$",
             "Português",
@@ -117,8 +118,8 @@ def carregar_empresa():
     }
   return {
       "nome": "Evolution Corp Brasil",
-      "pais": "Brasil",
-      "pais_registro": "Brasil",
+      "pais": "Brazil",
+      "pais_registro": "Brazil",
       "moeda": "BRL",
       "simbolo": "R$",
       "idioma": "Português",
@@ -147,31 +148,92 @@ def salvar_empresa_db(dados):
   conn.close()
 
 
-# --- BASE INTERNACIONAL DE PAÍSES E MOEDAS (ALFABÉTICA) ---
-PAISES_MOEDAS = {
-    "África do Sul": {"codigo": "ZA", "moeda": "ZAR", "simbolo": "ZAR", "idioma": "English", "fuso": "UTC+2"},
-    "Angola": {"codigo": "AO", "moeda": "AOA", "simbolo": "Kz", "idioma": "Português", "fuso": "UTC+1"},
-    "Argentina": {"codigo": "AR", "moeda": "ARS", "simbolo": "ARS", "idioma": "Español", "fuso": "UTC-3"},
-    "Austrália": {"codigo": "AU", "moeda": "AUD", "simbolo": "A$", "idioma": "English", "fuso": "UTC+10"},
-    "Brasil": {"codigo": "BR", "moeda": "BRL", "simbolo": "R$", "idioma": "Português", "fuso": "UTC-3"},
-    "Cabo Verde": {"codigo": "CV", "moeda": "CVE", "simbolo": "CVE", "idioma": "Português", "fuso": "UTC-1"},
-    "Canadá": {"codigo": "CA", "moeda": "CAD", "simbolo": "CA$", "idioma": "English", "fuso": "UTC-5"},
-    "China": {"codigo": "CN", "moeda": "CNY", "simbolo": "CN¥", "idioma": "English", "fuso": "UTC+8"},
-    "Espanha": {"codigo": "ES", "moeda": "EUR", "simbolo": "€", "idioma": "Español", "fuso": "UTC+1"},
-    "Estados Unidos": {"codigo": "US", "moeda": "USD", "simbolo": "US$", "idioma": "English", "fuso": "UTC-5"},
-    "Índia": {"codigo": "IN", "moeda": "INR", "simbolo": "₹", "idioma": "English", "fuso": "UTC+5:30"},
-    "Japão": {"codigo": "JP", "moeda": "JPY", "simbolo": "¥", "idioma": "English", "fuso": "UTC+9"},
-    "México": {"codigo": "MX", "moeda": "MXN", "simbolo": "MX$", "idioma": "Español", "fuso": "UTC-6"},
-    "Moçambique": {"codigo": "MZ", "moeda": "MZN", "simbolo": "MT", "idioma": "Português", "fuso": "UTC+2"},
-    "Paraguai": {"codigo": "PY", "moeda": "PYG", "simbolo": "₲", "idioma": "Español", "fuso": "UTC-4"},
-    "Portugal": {"codigo": "PT", "moeda": "EUR", "simbolo": "€", "idioma": "Português", "fuso": "UTC+0"},
-    "Reino Unido": {"codigo": "GB", "moeda": "GBP", "simbolo": "£", "idioma": "English", "fuso": "UTC+0"},
-    "Suíça": {"codigo": "CH", "moeda": "CHF", "simbolo": "CHF", "idioma": "English", "fuso": "UTC+1"},
-    "Uruguai": {"codigo": "UY", "moeda": "UYU", "simbolo": "$U", "idioma": "Español", "fuso": "UTC-3"},
-}
+# --- LISTA COMPLETA DE TODOS OS PAÍSES DO MUNDO VIA PYCOUNTRY ---
+def obter_todos_os_paises():
+  paises = sorted(
+      [country.name for country in pycountry.countries], key=str.lower
+  )
+  return paises
 
-# --- DICIONÁRIO MULTILÍNGUA COM ITENS EM ORDEM ALFABÉTICA ---
+
+# --- DICIONÁRIO MULTILÍNGUA ABRANGENTE (EM ORDEM ALFABÉTICA) ---
 DICIONARIO = {
+    "العربية (Arabic)": {
+        "titulo": "🚀 إيفولوشن لإدارة الأعمال عبر الإنترنت",
+        "menu": "القائمة الرئيسية",
+        "clientes": "إدارة العملاء",
+        "produtos": "إدارة المنتجات",
+        "vendas": "المبيعات والفوترة",
+        "dashboard": "لوحة التحكّم والتقارير الموحدة",
+        "config": "الإعدادات الإقليمية والمدفوعات",
+        "ia": "مساعد الذكاء الاصطناعي",
+        "verificacao": "الأمان - التحقق من البريد الإلكتروني",
+        "enviar_codigo": "إرسال رمز التحقق",
+        "email_label": "البريد الإلكتروني للمستلم",
+        "codigo_label": "أدخل الرمز المستلم (6 أرقام)",
+        "verificar": "تحقق وتسجيل الدخول",
+        "sucesso_envio": "تم إرسال الرمز بنجاح إلى البريد!",
+        "sucesso_verif": "تم منح الوصول بنجاح!",
+        "erro_verif": "الرمز غير صحيح. حاول مرة أخرى.",
+        "add_cliente": "تسجيل عميل جديد",
+        "nome_cliente": "اسم العميل",
+        "email_cliente": "البريد الإلكتروني",
+        "tel_cliente": "رقم الهاتف",
+        "pais_cliente": "دولة العميل",
+        "salvar": "حفظ التغييرات",
+        "lista_clientes": "دليل العملاء المسجلين",
+        "add_produto": "إضافة منتج جديد",
+        "nome_produto": "اسم المنتج",
+        "preco_produto": "السعر",
+        "lista_produtos": "المنتجات المتوفرة",
+        "reg_venda": "تسجيل عملية بيع",
+        "qtd": "الكمية",
+        "total_venda": "إجمالي المبيعات",
+        "historico_vendas": "سجل المبيعات",
+        "chat_ia": "تحدث مع مساعد الذكاء الاصطناعي",
+        "pergunta_ia": "اكتب سؤال الإدارة الخاص بك:",
+        "enviar": "إرسال السؤال",
+        "sair": "تسجيل الخروج",
+        "empresa_setup": "ملف الشركة والتسجيل",
+    },
+    "Deutsch (German)": {
+        "titulo": "🚀 A Evolution Online-Management",
+        "menu": "Hauptmenü",
+        "clientes": "Kundenverwaltung",
+        "produtos": "Produktverwaltung",
+        "vendas": "Verkauf & Rechnungsstellung",
+        "dashboard": "Dashboard & Konsolidierte Berichte",
+        "config": "Regionale Einstellungen & Zahlungen",
+        "ia": "KI-Assistent",
+        "verificacao": "Sicherheit - E-Mail-Verifizierung",
+        "enviar_codigo": "Verifizierungscode senden",
+        "email_label": "Empfänger-E-Mail-Adresse",
+        "codigo_label": "Erhaltenen Code eingeben (6 Ziffern)",
+        "verificar": "Validieren und Anmelden",
+        "sucesso_envio": "Code erfolgreich an den Posteingang gesendet!",
+        "sucesso_verif": "Zugriff erfolgreich gewährt!",
+        "erro_verif": "Falscher Code. Versuchen Sie es erneut.",
+        "add_cliente": "Neuen Kunden registrieren",
+        "nome_cliente": "Kundenname",
+        "email_cliente": "E-Mail-Adresse",
+        "tel_cliente": "Telefonnummer",
+        "pais_cliente": "Kundenland",
+        "salvar": "Änderungen speichern",
+        "lista_clientes": "Registriertes Kundenverzeichnis",
+        "add_produto": "Neues Produkt hinzufügen",
+        "nome_produto": "Produktname",
+        "preco_produto": "Preis",
+        "lista_produtos": "Produkte auf Lager",
+        "reg_venda": "Verkauf registrieren",
+        "qtd": "Menge",
+        "total_venda": "Gesamtverkäufe",
+        "historico_vendas": "Verlauf der Verkäufe",
+        "chat_ia": "Chat mit KI-Assistent",
+        "pergunta_ia": "Geben Sie Ihre Managementfrage ein:",
+        "enviar": "Frage senden",
+        "sair": "Abmelden",
+        "empresa_setup": "Unternehmensprofil & Registrierung",
+    },
     "English": {
         "titulo": "🚀 A Evolution Online Management",
         "menu": "Main Menu",
@@ -248,6 +310,82 @@ DICIONARIO = {
         "sair": "Cerrar Sesión",
         "empresa_setup": "Registro y Perfil de Empresa",
     },
+    "Français (French)": {
+        "titulo": "🚀 A Evolution Gestion en Ligne",
+        "menu": "Menu Principal",
+        "clientes": "Gestion des Clients",
+        "produtos": "Gestion des Produits",
+        "vendas": "Ventes et Facturation",
+        "dashboard": "Tableau de Bord & Rapports Consolidés",
+        "config": "Paramètres Régionaux & Paiements",
+        "ia": "Assistant IA",
+        "verificacao": "Sécurité - Vérification par E-mail",
+        "enviar_codigo": "Envoyer le Code de Vérification",
+        "email_label": "Adresse E-mail du Destinataire",
+        "codigo_label": "Entrez le code reçu (6 chiffres)",
+        "verificar": "Valider et Se Connecter",
+        "sucesso_envio": "Code envoyé avec succès dans la boîte de réception !",
+        "sucesso_verif": "Accès autorisé avec succès !",
+        "erro_verif": "Code incorrect. Réessayez.",
+        "add_cliente": "Enregistrer un Nouveau Client",
+        "nome_cliente": "Nom du Client",
+        "email_cliente": "Adresse E-mail",
+        "tel_cliente": "Numéro de Téléphone",
+        "pais_cliente": "Pays du Client",
+        "salvar": "Enregistrer les Modifications",
+        "lista_clientes": "Répertoire des Clients Enregistrés",
+        "add_produto": "Ajouter un Nouveau Produit",
+        "nome_produto": "Nom du Produit",
+        "preco_produto": "Prix",
+        "lista_produtos": "Produits en Stock",
+        "reg_venda": "Enregistrer la Vente",
+        "qtd": "Quantité",
+        "total_venda": "Ventes Totales",
+        "historico_vendas": "Historique des Ventes",
+        "chat_ia": "Discuter avec l'Assistant IA",
+        "pergunta_ia": "Tapez votre question de gestion :",
+        "enviar": "Envoyer la Question",
+        "sair": "Se Déconnecter",
+        "empresa_setup": "Profil & Enregistrement de l'Entreprise",
+    },
+    "日本語 (Japanese)": {
+        "titulo": "🚀 A Evolution オンライン管理",
+        "menu": "メインメニュー",
+        "clientes": "顧客管理",
+        "produtos": "商品管理",
+        "vendas": "売上・請求",
+        "dashboard": "ダッシュボード・統合レポート",
+        "config": "地域設定・支払い",
+        "ia": "AIアシスタント",
+        "verificacao": "セキュリティ - メール認証",
+        "enviar_codigo": "認証コードを送信",
+        "email_label": "受信者のメールアドレス",
+        "codigo_label": "受信したコードを入力（6桁）",
+        "verificar": "確認してログイン",
+        "sucesso_envio": "コードが正常に送信されました！",
+        "sucesso_verif": "アクセスが正常に許可されました！",
+        "erro_verif": "コードが正しくありません。もう一度お試しください。",
+        "add_cliente": "新規顧客を登録",
+        "nome_cliente": "顧客名",
+        "email_cliente": "メールアドレス",
+        "tel_cliente": "電話番号",
+        "pais_cliente": "顧客の国",
+        "salvar": "変更を保存",
+        "lista_clientes": "登録済み顧客ディレクトリ",
+        "add_produto": "新商品を追加",
+        "nome_produto": "商品名",
+        "preco_produto": "価格",
+        "lista_produtos": "在庫商品",
+        "reg_venda": "売上を登録",
+        "qtd": "数量",
+        "total_venda": "総売上",
+        "historico_vendas": "売上履歴",
+        "chat_ia": "AIアシスタントとチャット",
+        "pergunta_ia": "管理に関する質問を入力してください：",
+        "enviar": "質問を送信",
+        "sair": "サインアウト",
+        "empresa_setup": "企業プロフィール・登録",
+    },
     "Português": {
         "titulo": "🚀 A Evolution Gestão Online",
         "menu": "Menu Principal",
@@ -286,6 +424,82 @@ DICIONARIO = {
         "sair": "Terminar Sessão",
         "empresa_setup": "Registo e Perfil da Empresa",
     },
+    "Русский (Russian)": {
+        "titulo": "🚀 A Evolution Онлайн Управление",
+        "menu": "Главное меню",
+        "clientes": "Управление клиентами",
+        "produtos": "Управление продуктами",
+        "vendas": "Продажи и выставление счетов",
+        "dashboard": "Панель приборов и сводные отчеты",
+        "config": "Региональные настройки и платежи",
+        "ia": "ИИ-ассистент",
+        "verificacao": "Безопасность - Подтверждение по электронной почте",
+        "enviar_codigo": "Отправить код подтверждения",
+        "email_label": "Электронная почта получателя",
+        "codigo_label": "Введите полученный код (6 цифр)",
+        "verificar": "Подтвердить и войти",
+        "sucesso_envio": "Код успешно отправлен!",
+        "sucesso_verif": "Доступ успешно предоставлен!",
+        "erro_verif": "Неверный код. Попробуйте еще раз.",
+        "add_cliente": "Зарегистрировать нового клиента",
+        "nome_cliente": "Имя клиента",
+        "email_cliente": "Электронная почта",
+        "tel_cliente": "Номер телефона",
+        "pais_cliente": "Страна клиента",
+        "salvar": "Сохранить изменения",
+        "lista_clientes": "Каталог зарегистрированных клиентов",
+        "add_produto": "Добавить новый продукт",
+        "nome_produto": "Название продукта",
+        "preco_produto": "Цена",
+        "lista_produtos": "Товары на складе",
+        "reg_venda": "Зарегистрировать продажу",
+        "qtd": "Количество",
+        "total_venda": "Общий объем продаж",
+        "historico_vendas": "История продаж",
+        "chat_ia": "Чат с ИИ-ассистентом",
+        "pergunta_ia": "Введите ваш вопрос по управлению:",
+        "enviar": "Отправить вопрос",
+        "sair": "Выйти",
+        "empresa_setup": "Профиль компании и регистрация",
+    },
+    "中文 (Chinese)": {
+        "titulo": "🚀 A Evolution 在线管理系统",
+        "menu": "主菜单",
+        "clientes": "客户管理",
+        "produtos": "产品管理",
+        "vendas": "销售与开票",
+        "dashboard": "仪表盘与综合报表",
+        "config": "区域设置与支付",
+        "ia": "AI 助手",
+        "verificacao": "安全 - 电子邮件验证",
+        "enviar_codigo": "发送验证码",
+        "email_label": "收件人电子邮箱",
+        "codigo_label": "输入收到的验证码（6位数字）",
+        "verificar": "验证并登录",
+        "sucesso_envio": "验证码已成功发送至收件箱！",
+        "sucesso_verif": "成功授权访问！",
+        "erro_verif": "验证码错误。请重试。",
+        "add_cliente": "注册新客户",
+        "nome_cliente": "客户姓名",
+        "email_cliente": "电子邮箱",
+        "tel_cliente": "电话号码",
+        "pais_cliente": "客户国家",
+        "salvar": "保存更改",
+        "lista_clientes": "已注册客户名录",
+        "add_produto": "添加新产品",
+        "nome_produto": "产品名称",
+        "preco_produto": "价格",
+        "lista_produtos": "现有库存产品",
+        "reg_venda": "记录销售",
+        "qtd": "数量",
+        "total_venda": "总销售额",
+        "historico_vendas": "销售历史",
+        "chat_ia": "与 AI 助手对话",
+        "pergunta_ia": "输入您的管理问题：",
+        "enviar": "发送问题",
+        "sair": "退出登录",
+        "empresa_setup": "公司资料与注册",
+    },
 }
 
 # --- ESTADOS DA SESSÃO ---
@@ -294,9 +508,17 @@ if "autenticado" not in st.session_state:
 if "codigo_enviado" not in st.session_state:
   st.session_state["codigo_enviado"] = ""
 
-# --- CARREGAR DADOS GLOBAIS DA EMPRESA (COM SUPORTE REATIVO) ---
+# --- CARREGAR DADOS GLOBAIS DA EMPRESA ---
 emp = carregar_empresa()
 simbolo_ativo = emp["simbolo"]
+idioma_selecionado = emp["idioma"]
+
+# Garantir robustez caso o idioma salvo não exista no dicionário
+if idioma_selecionado not in DICIONARIO:
+  idioma_selecionado = "Português"
+
+t = DICIONARIO[idioma_selecionado]
+
 
 # --- FUNÇÃO DE FORMATAÇÃO MONETÁRIA REATIVA GLOBAL ---
 def formatar_moeda(valor, simbolo=simbolo_ativo):
@@ -332,8 +554,25 @@ def converter_cambio(valor, moeda_origem, moeda_destino):
 # --- SELETOR DE IDIOMA E NAVEGAÇÃO NA BARRA LATERAL (EM ORDEM ALFABÉTICA) ---
 with st.sidebar:
   idiomas_ordenados = sorted(list(DICIONARIO.keys()))
-  idioma_atual = st.selectbox("Idioma / Language", idiomas_ordenados)
-  t = DICIONARIO[idioma_atual]
+  idioma_atual_idx = (
+      idiomas_ordenados.index(idioma_selecionado)
+      if idioma_selecionado in idiomas_ordenados
+      else 0
+  )
+  idioma_sidebar = st.selectbox(
+      "Idioma / Language", idiomas_ordenados, index=idioma_atual_idx
+  )
+  
+  # Se o usuário mudar o idioma na barra lateral, atualizamos instantaneamente a sessão da empresa
+  if idioma_sidebar != emp["idioma"]:
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE empresa SET idioma = ?", (idioma_sidebar,))
+    conn.commit()
+    conn.close()
+    st.rerun()
+
+  t = DICIONARIO[idioma_sidebar]
 
   if st.session_state["autenticado"]:
     st.markdown("---")
@@ -427,15 +666,14 @@ else:
   if menu == t["clientes"]:
     st.header(t["clientes"])
     
-    # Formulário de Cadastro Completo de Clientes
     with st.form("form_cliente"):
       st.subheader(t["add_cliente"])
       nome_cli = st.text_input(t["nome_cliente"])
       email_cli = st.text_input(t["email_cliente"])
       tel_cli = st.text_input(t["tel_cliente"])
       
-      paises_lista = sorted(list(PAISES_MOEDAS.keys()))
-      pais_cli = st.selectbox(t["pais_cliente"], paises_lista)
+      paises_lista_completa = obter_todos_os_paises()
+      pais_cli = st.selectbox(t["pais_cliente"], paises_lista_completa)
 
       if st.form_submit_button(t["salvar"]):
         if nome_cli:
@@ -608,21 +846,24 @@ else:
     with st.form("form_empresa"):
       novo_nome_empresa = st.text_input("Nome da Empresa", value=emp["nome"])
       
-      paises_lista = sorted(list(PAISES_MOEDAS.keys()))
-      pais_atual_idx = paises_lista.index(emp["pais"]) if emp["pais"] in paises_lista else 0
+      # Carregar todos os países do mundo via pycountry
+      paises_lista_completa = obter_todos_os_paises()
       
-      novo_pais = st.selectbox("País de Operação", paises_lista, index=pais_atual_idx)
+      pais_atual_idx = paises_lista_completa.index(emp["pais"]) if emp["pais"] in paises_lista_completa else 0
+      
+      novo_pais = st.selectbox("País de Operação", paises_lista_completa, index=pais_atual_idx)
       novo_pais_registro = st.selectbox(
-          "País de Registo", paises_lista, index=paises_lista.index(emp["pais_registro"]) if emp["pais_registro"] in paises_lista else 0
+          "País de Registo", paises_lista_completa, index=paises_lista_completa.index(emp["pais_registro"]) if emp["pais_registro"] in paises_lista_completa else 0
       )
 
-      info_pais = PAISES_MOEDAS[novo_pais]
-      nova_moeda = info_pais["moeda"]
-      novo_simbolo = info_pais["simbolo"]
-      novo_idioma = info_pais["idioma"]
-      novo_fuso = info_pais["fuso"]
+      # Seleção independente de Moeda e Símbolo
+      col_m1, col_m2 = st.columns(2)
+      with col_m1:
+        nova_moeda = st.text_input("Código da Moeda (ISO 4217)", value=emp["moeda"])
+      with col_m2:
+        novo_simbolo = st.text_input("Símbolo Monetário", value=emp["simbolo"])
 
-      st.info(f"💱 Moeda Oficial Associada: **{nova_moeda} ({novo_simbolo})** | Fuso: **{novo_fuso}**")
+      st.info(f"💱 Configuração Ativa: País **{novo_pais}** | Moeda **{nova_moeda} ({novo_simbolo})**")
 
       if st.form_submit_button(t["salvar"]):
         dados_atualizados = {
@@ -631,23 +872,17 @@ else:
             "pais_registro": novo_pais_registro,
             "moeda": nova_moeda,
             "simbolo": novo_simbolo,
-            "idioma": novo_idioma,
-            "fuso": novo_fuso,
+            "idioma": idioma_selecionado,
+            "fuso": emp["fuso"],
         }
         salvar_empresa_db(dados_atualizados)
-        st.success("Configurações atualizadas! O site inteiro foi atualizado para a nova moeda.")
+        st.success("Configurações atualizadas globalmente!")
         st.rerun()
 
     st.markdown("---")
     st.subheader("💳 Métodos de Pagamento Regionais")
-    if emp["pais"] == "Brasil":
-      st.write("🟢 **PIX** (Ativado - Ambiente de Produção/Teste)")
-      st.write("🟢 **Boleto Bancário** (Ativado)")
-      st.write("🔵 **Cartões Nacionais e Internacionais**")
-    else:
-      st.write("🟢 **PayPal Internacional**")
-      st.write(f"🟢 **Transferência Bancária ({emp['moeda']})**")
-      st.write("🟢 **Cartões de Crédito Internacionais (Visa/Mastercard)**")
+    st.write(f"🟢 **PayPal Internacional & Transferência Bancária ({emp['moeda']})**")
+    st.write("🟢 **Cartões de Crédito Globais (Visa/Mastercard/Amex)**")
 
     st.markdown("---")
     st.subheader("💱 Conversor Cambial de Teste")
