@@ -40,7 +40,7 @@ def init_db():
             )
         """)
 
-    # Usuários e Permissões (Administrador, Gerente, Funcionário)
+    # Usuários e Permissões
     cursor.execute("""
             CREATE TABLE IF NOT EXISTS usuarios (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,7 +88,7 @@ def init_db():
             )
         """)
 
-    # Pedidos com Fluxo Automatizado (Venda -> Separação -> Envio -> Concluído)
+    # Pedidos com Fluxo Automatizado
     cursor.execute("""
             CREATE TABLE IF NOT EXISTS pedidos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,7 +117,7 @@ def init_db():
             )
         """)
 
-    # Histórico de Atividades (Auditoria de Ações)
+    # Histórico de Atividades (Auditoria)
     cursor.execute("""
             CREATE TABLE IF NOT EXISTS historico (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -509,7 +509,6 @@ else:
         )
 
         if st.form_submit_button("Registar Venda (Disparar Automações)"):
-          # Obter preço e estoque atual
           preco_u = 0
           estoque_atual = 0
           for p in produtos:
@@ -541,7 +540,7 @@ else:
                 (novo_est, prod_info),
             )
 
-            # 3. Criar Pedido Automático com o Fluxo Inicial
+            # 3. Criar Pedido Automático
             cursor.execute(
                 "INSERT INTO pedidos (cliente, produto, quantidade,"
                 " status_venda, status_separacao, status_envio, status_pedido,"
@@ -677,145 +676,4 @@ else:
     st.header("📝 Gestor Integrado de Tarefas")
     with st.form("form_tar"):
       tit = st.text_input("Título da Tarefa")
-      resp = st.text_input("Responsável", value=st.session_state["usuario_atual"])
-      prazo = st.text_input("Prazo (ex: 2 dias)")
-      prio = st.selectbox("Prioridade", ["Baixa", "Média", "Alta"])
-      rel = st.text_input("Relacionamento (Cliente/Pedido)")
-      if st.form_submit_button("Criar Tarefa"):
-        if tit:
-          conn = sqlite3.connect(DB_FILE)
-          cursor = conn.cursor()
-          data_h = datetime.now().strftime("%d/%m/%Y")
-          cursor.execute(
-              "INSERT INTO tarefas (titulo, responsavel, prazo, prioridade,"
-              " status, relacionamento, data_criacao) VALUES (?, ?, ?, ?, ?, ?,"
-              " ?)",
-              (tit, resp, prazo, prio, "Pendente", rel, data_h),
-          )
-          conn.commit()
-          conn.close()
-          st.success("Tarefa criada com sucesso!")
-          st.rerun()
-
-    st.subheader("Lista de Tarefas Ativas")
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, titulo, responsavel, prazo, prioridade, status FROM tarefas"
-    )
-    tarefas = cursor.fetchall()
-    conn.close()
-
-    for tr in tarefas:
-      st.write(
-          f"📌 **{tr[1]}** (Resp: {tr[2]} | Prazo: {tr[3]} | Prioridade:"
-          f" {tr[4]} | Status: **{tr[5]**})"
-      )
-      if tr[5] != "Concluída" and st.button(
-          f"Concluir Tarefa #{tr[0]}", key=f"t_{tr[0]}"
-      ):
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE tarefas SET status = 'Concluída' WHERE id = ?", (tr[0],)
-        )
-        conn.commit()
-        conn.close()
-        st.success("Tarefa concluída!")
-        st.rerun()
-
-  # ==========================================
-  # 10. MYA (ASSISTENTE INTELIGENTE)
-  # ==========================================
-  elif menu == t["mya"]:
-    st.header("🤖 MyA — Assistente Inteligente do Evolution")
-    st.write(
-        "Faça perguntas diretas sobre os processos, pedidos ou estado do"
-        " sistema:"
-    )
-
-    pergunta = st.text_input(
-        "Ex: 'O que falta para concluir o pedido do cliente X?' ou 'Tem algum"
-        " pedido parado?'"
-    )
-    if st.button("Perguntar à MyA"):
-      if pergunta:
-        p_lower = pergunta.lower()
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-
-        resposta_mya = ""
-        if "parado" in p_lower or "aguardando" in p_lower:
-          cursor.execute(
-              "SELECT COUNT(*) FROM pedidos WHERE status_separacao = 'Pendente'"
-          )
-          qtd_p = cursor.fetchone()[0]
-          resposta_mya = (
-              f"Existem {qtd_p} pedidos aguardando o processo de separação de"
-              " produtos."
-          )
-        elif "pedido" in p_lower:
-          cursor.execute(
-              "SELECT id, cliente, status_separacao, status_envio FROM pedidos"
-          )
-          p_all = cursor.fetchall()
-          detalhes_p = [
-              f"Pedido #{p[0]} (Cliente: {p[1]} | Separação: {p[2]} | Envio:"
-              f" {p[3]})"
-              for p in p_all
-          ]
-          resposta_mya = (
-              "Estado atual dos pedidos no sistema:\n- "
-              + "\n- ".join(detalhes_p)
-              if detalhes_p
-              else "Não há pedidos registados."
-          )
-        else:
-          cursor.execute("SELECT COUNT(*) FROM vendas")
-          tot_v = cursor.fetchone()[0]
-          resposta_mya = (
-              f"Com base nas informações do sistema, temos {tot_v} vendas"
-              " registadas e os fluxos estão operacionais."
-          )
-
-        conn.close()
-        st.info(f"💡 **MyA:** {resposta_mya}")
-      else:
-        st.warning("Escreva uma pergunta.")
-
-  # ==========================================
-  # 11. CONFIGURAÇÕES
-  # ==========================================
-  elif menu == t["config"]:
-    st.header(t["config"])
-    with st.form("form_emp"):
-      nome_emp = st.text_input("Nome da Empresa", value=emp["nome"])
-      pais_op = st.selectbox(
-          "País de Operação",
-          list(PAISES_MOEDAS.keys()),
-          index=list(PAISES_MOEDAS.keys()).index(emp["pais"])
-          if emp["pais"] in PAISES_MOEDAS
-          else 0,
-      )
-      if st.form_submit_button("Guardar Configurações"):
-        dados_p = PAISES_MOEDAS[pais_op]
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM empresa")
-        cursor.execute(
-            "INSERT INTO empresa (nome, pais, pais_registro, moeda, simbolo,"
-            " idioma, fuso) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (
-                nome_emp,
-                pais_op,
-                pais_op,
-                dados_p["moeda"],
-                dados_p["simbolo"],
-                dados_p["idioma"],
-                "UTC-3",
-            ),
-        )
-        conn.commit()
-        conn.close()
-        st.success("Configurações atualizadas!")
-        st.rerun()
+      resp = st.text_input("Responsável
