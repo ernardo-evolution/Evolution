@@ -38,7 +38,7 @@ st.markdown("""
 
 DB_FILE = "evolution_gestao.db"
 
-# --- 3. MAPEAMENTO DE PAÍSES E MOEDAS (FONTE ÚNICA DA VERDADE) ---
+# --- 3. MAPEAMENTO DE PAÍSES E MOEDAS ---
 PAISES_MOEDAS = {
     "Brasil": {"moeda": "BRL", "simbolo": "R$", "idioma": "Português"},
     "Portugal": {"moeda": "EUR", "simbolo": "€", "idioma": "Português"},
@@ -293,8 +293,8 @@ def registrar_historico(usuario, acao, detalhes):
     )
     conn.commit()
     conn.close()
-  except:
-    pass
+  except Exception as e:
+    print(f"Erro ao registar histórico: {e}")
 
 
 t = {
@@ -344,7 +344,249 @@ try:
           st.session_state["autenticado"] = True
           st.session_state["usuario_atual"] = nome_u
           st.session_state["nivel_acesso"] = nivel_u
-except Exception:
-  pass
+except Exception as ex:
+  print(f"Aviso na persistência de sessão: {ex}")
 
 emp = carregar_empresa()
+simbolo_ativo = emp["simbolo"]
+
+
+def formatar_moeda(valor):
+  try:
+    v = float(valor)
+  except:
+    v = 0.0
+  return f"{simbolo_ativo} {v:,.2f}".replace(",", "X").replace(".", ",").replace(
+      "X", "."
+  )
+
+
+# --- 7. BARRA LATERAL REFINADA ---
+menu = t["dashboard"]
+with st.sidebar:
+  st.markdown(f"### {emp['nome']}")
+  st.markdown("---")
+  if st.session_state["autenticado"]:
+    st.markdown(
+        f"👤 **{st.session_state['usuario_atual']}**  \n🔑 Nível:"
+        f" `{st.session_state['nivel_acesso']}`"
+    )
+    st.markdown("---")
+    
+    menu = st.radio(
+        "Navegação Principal",
+        [
+            t["dashboard"],
+            t["clientes"],
+            t["produtos"],
+            t["estoque"],
+            t["vendas"],
+            t["pedidos"],
+            t["relatorios"],
+            t["tarefas"],
+            t["config"],
+        ],
+        label_visibility="collapsed",
+    )
+    st.markdown("---")
+    if st.button("Terminar Sessão", use_container_width=True):
+      if "session_token" in st.query_params:
+        del st.query_params["session_token"]
+      st.session_state["autenticado"] = False
+      st.session_state["usuario_atual"] = ""
+      st.session_state["nivel_acesso"] = ""
+      st.success("Sessão encerrada.")
+      st.rerun()
+  else:
+    st.warning("⚠️ Efetue login para aceder ao sistema.")
+
+
+# --- 8. INTERFACE PRINCIPAL ---
+if not st.session_state["autenticado"]:
+  st.title(t["titulo"])
+
+  if st.session_state["aguardando_verificacao"]:
+    st.warning(
+        "🔒 Conta pendente de ativação. Enviámos um código de 6 dígitos para o"
+        f" seu e-mail: **{st.session_state['aguardando_verificacao']}**"
+    )
+    with st.form("form_verificar_codigo"):
+      codigo_inserido = st.text_input(
+          "Introduza o Código de Verificação", max_chars=6
+      )
+      btn_confirmar = st.form_submit_button("Confirmar e Ativar Conta")
+
+      if btn_confirmar:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id FROM usuarios WHERE email = ? AND codigo_verificacao = ?",
+            (
+                st.session_state["aguardando_verificacao"],
+                codigo_inserido.strip(),
+            ),
+        )
+        res = cursor.fetchone()
+        if res:
+          cursor.execute(
+              "UPDATE usuarios SET ativo = 1, codigo_verificacao = NULL WHERE"
+              " email = ?",
+              (st.session_state["aguardando_verificacao"],),
+          )
+          conn.commit()
+          conn.close()
+          st.success("Conta verificada e ativada com sucesso! Já pode fazer login.")
+          st.session_state["aguardando_verificacao"] = None
+          st.rerun()
+        else:
+          conn.close()
+          st.error("Código incorreto. Tente novamente.")
+  else:
+    tab_login, tab_registo = st.tabs(["🔑 Iniciar Sessão", "📝 Registar Conta"])
+
+    with tab_login:
+      st.markdown("### Acesso Restrito ao Sistema")
+      with st.form("form_login_main"):
+        email_login = st.text_input("E-mail corporativo").strip()
+        lembrar_sessao = st.checkbox("Lembrar de mim neste dispositivo")
+        btn_entrar = st.form_submit_button("Entrar no Sistema")
+
+        if btn_entrar:
+          if email_login:
+            conn = sqlite3.connect(DB_FILE)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, nome, nivel, ativo FROM usuarios WHERE email = ?",
+                (email_login,),
+            )
+            user = cursor.fetchone()
+
+            if user:
+              user_id, nome_u, nivel_u, ativo_u = user
+              if ativo_u == 0:
+                conn.close()
+                st.error(
+                    "Esta conta ainda não foi ativada por e-mail. Contacte o"
+                    " suporte."
+                )
+              else:
+                st.session_state["autenticado"] = True
+                st.session_state["usuario_atual"] = nome_u
+                st.session_state["nivel_acesso"] = nivel_u
+
+                if lembrar_sessao:
+                  token = secrets.token_hex(32)
+                  expiry = (datetime.now() + timedelta(days=30)).strftime(
+                      "%Y-%m-%d %H:%M:%S"
+                  )
+                  cursor.execute(
+                      "UPDATE usuarios SET session_token = ?, token_expiry ="
+                      " ? WHERE id = ?",
+                      (token, expiry, user_id),
+                  )
+                  conn.commit()
+                  st.query_params["session_token"] = token
+
+                conn.close()
+                st.success("Sessão iniciada!")
+                st.rerun()
+            else:
+              conn.close()
+              st.error(
+                  "Utilizador não encontrado. Crie uma conta na aba ao lado."
+              )
+          else:
+            st.warning("Introduza o seu e-mail.")
+
+    with tab_registo:
+      st.markdown("### Criar Nova Conta com Verificação Segura")
+      with st.form("form_reg_main"):
+        novo_nome = st.text_input("Nome Completo")
+        novo_email = st.text_input("E-mail Corporativo")
+        novo_nivel = st.selectbox(
+            "Nível de Acesso", ["Administrador", "Gerente", "Funcionário"]
+        )
+        if st.form_submit_button("Registar e Enviar Código"):
+          if novo_nome and novo_email:
+            conn = sqlite3.connect(DB_FILE)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id FROM usuarios WHERE email = ?", (novo_email.strip(),)
+            )
+            existe = cursor.fetchone()
+            if existe:
+              st.error("Este e-mail já está registado.")
+              conn.close()
+            else:
+              codigo_verif = str(random.randint(100000, 999999))
+              cursor.execute(
+                  "INSERT INTO usuarios (nome, email, nivel, ativo,"
+                  " codigo_verificacao) VALUES (?, ?, ?, 0, ?)",
+                  (
+                      novo_nome.strip(),
+                      novo_email.strip(),
+                      novo_nivel,
+                      codigo_verif,
+                  ),
+              )
+              conn.commit()
+              conn.close()
+
+              enviou = enviar_email_verificacao(
+                  novo_email.strip(), codigo_verif
+              )
+              if enviou:
+                st.session_state["aguardando_verificacao"] = novo_email.strip()
+                st.success(
+                    "Registo efetuado! Verifique o código enviado para o seu"
+                    " e-mail."
+                )
+                st.rerun()
+              else:
+                st.session_state["aguardando_verificacao"] = novo_email.strip()
+                st.warning(
+                    "⚠️ SMTP não configurado. Para efeitos de teste, o seu"
+                    f" código de ativação é: **{codigo_verif}**"
+                )
+                st.rerun()
+          else:
+            st.warning("Preencha todos os campos.")
+
+else:
+  # --- MÓDULO: DASHBOARD EXECUTIVO REFINADO ---
+  if menu == t["dashboard"]:
+    st.markdown("## 📊 Dashboard Executivo")
+    st.markdown(
+        f"Visão geral das operações, indicadores financeiros e alertas de"
+        f" desempenho para **{emp['nome']}**."
+    )
+    st.markdown("---")
+
+    try:
+      conn = sqlite3.connect(DB_FILE)
+      cursor = conn.cursor()
+      
+      cursor.execute("SELECT SUM(valor_total) FROM vendas")
+      faturamento = cursor.fetchone()[0] or 0.0
+
+      cursor.execute(
+          "SELECT COUNT(*) FROM pedidos WHERE status_pedido = 'Em"
+          " processamento'"
+      )
+      ped_proc = cursor.fetchone()[0] or 0
+
+      cursor.execute(
+          "SELECT COUNT(*) FROM pedidos WHERE status_separacao = 'Pendente'"
+      )
+      ped_pend = cursor.fetchone()[0] or 0
+
+      cursor.execute(
+          "SELECT COUNT(*) FROM produtos WHERE quantidade_estoque <= estoque_minimo"
+      )
+      est_baixo = cursor.fetchone()[0] or 0
+
+      c1, c2, c3, c4 = st.columns(4)
+      with c1:
+        st.metric("Faturamento Total", formatar_moeda(faturamento))
+      with c2:
+        st.metric("
