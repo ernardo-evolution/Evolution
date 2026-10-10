@@ -130,3 +130,58 @@ def carregar_empresa():
                 "fuso": row[6] or "UTC-3",
             }
     except Exception as e:
+        print(f"Erro ao carregar empresa: {e}")
+
+    return {
+        "nome": "Evolution Corp Brasil",
+        "pais": "Brasil",
+        "pais_registro": "Brasil",
+        "moeda": "BRL",
+        "simbolo": "R$",
+        "idioma": "Português",
+        "fuso": "UTC-3",
+    }
+
+def registrar_historico(usuario, username, email, acao, detalhes, resultado):
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        cursor.execute(
+            """INSERT INTO historico (usuario, username, email, acao, detalhes, resultado, servico, data_hora) 
+               VALUES (?, ?, ?, ?, ?, ?, 'Sistema', ?)""",
+            (usuario, username, email, acao, detalhes, resultado, data_hora),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Erro ao registar log: {e}")
+
+emp = carregar_empresa()
+
+# --- 7. GESTÃO DE SESSÃO ---
+if "autenticado" not in st.session_state:
+    st.session_state["autenticado"] = False
+if "usuario_atual" not in st.session_state:
+    st.session_state["usuario_atual"] = ""
+if "username_atual" not in st.session_state:
+    st.session_state["username_atual"] = ""
+if "nivel_acesso" not in st.session_state:
+    st.session_state["nivel_acesso"] = ""
+
+# --- 8. BARRA LATERAL ---
+menu = "Dashboard"
+with st.sidebar:
+    st.markdown(f"### {emp['nome']}")
+    st.markdown("---")
+    if st.session_state["autenticado"]:
+        st.markdown(f"👤 **{st.session_state['usuario_atual']}**\n🔑 Nível: `{st.session_state['nivel_acesso']}`")
+        st.markdown("---")
+        lista_menus = ["Dashboard", "Clientes", "Produtos", "Estoque", "Vendas", "Pedidos", "Relatórios", "Tarefas", "Configurações"]
+        if st.session_state["nivel_acesso"] == "Administrador":
+            lista_menus.append("Logs do Sistema")
+
+        menu = st.radio("Navegação Principal", lista_menus, label_visibility="collapsed")
+        st.markdown("---")
+        if st.button("Terminar Sessão", use_container_width=True):
+            st.session_state["autenticado"] = False
