@@ -35,7 +35,7 @@ DB_FILE = "evolution_gestao.db"
 def gerar_hash_senha(senha):
     return hashlib.sha256(senha.encode('utf-8')).hexdigest()
 
-# --- 3. BASE DE DADOS E TABELAS DE AUDITORIA ---
+# --- 3. BASE DE DADOS E MIGRAÇÃO AUTOMÁTICA ---
 try:
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -55,20 +55,14 @@ try:
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS clientes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT,
-            email TEXT,
-            telefone TEXT,
-            cidade TEXT,
-            data_cadastro TEXT
+            nome TEXT
         )
     """)
     
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS produtos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT,
-            preco REAL,
-            stock INTEGER
+            nome TEXT
         )
     """)
     
@@ -96,6 +90,26 @@ try:
     """)
     
     conn.commit()
+
+    def garantir_coluna(tabela, coluna, definicao):
+        cursor.execute(f"PRAGMA table_info({tabela})")
+        colunas_existentes = [col[1] for col in cursor.fetchall()]
+        if coluna not in colunas_existentes:
+            try:
+                cursor.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {definicao}")
+                conn.commit()
+            except Exception as e:
+                print(f"Erro ao adicionar coluna {coluna} em {tabela}: {e}")
+
+    # Garantir colunas essenciais sem perder dados antigos
+    garantir_coluna("clientes", "email", "TEXT")
+    garantir_coluna("clientes", "telefone", "TEXT")
+    garantir_coluna("clientes", "cidade", "TEXT")
+    garantir_coluna("clientes", "data_cadastro", "TEXT")
+
+    garantir_coluna("produtos", "preco", "REAL DEFAULT 0.0")
+    garantir_coluna("produtos", "stock", "INTEGER DEFAULT 0")
+
     conn.close()
 except Exception as e:
     st.error(f"Erro na BD: {e}")
@@ -286,104 +300,4 @@ else:
         
         with st.form("form_cliente"):
             c_nome = st.text_input("Nome do Cliente")
-            c_email = st.text_input("E-mail")
-            c_tel = st.text_input("Telefone")
-            c_cid = st.text_input("Cidade")
-            btn_add_c = st.form_submit_button("Adicionar Cliente")
-            
-            if btn_add_c and c_nome:
-                cursor = conn.cursor()
-                data_cad = datetime.now().strftime("%d/%m/%Y")
-                cursor.execute("INSERT INTO clientes (nome, email, telefone, cidade, data_cadastro) VALUES (?, ?, ?, ?, ?)",
-                               (c_nome, c_email, c_tel, c_cid, data_cad))
-                conn.commit()
-                registar_log(st.session_state["usuario_atual"], st.session_state["email_atual"], "Cliente", f"Cliente {c_nome} adicionado", "Sucesso")
-                st.success(f"Cliente '{c_nome}' adicionado com sucesso!")
-                st.rerun()
-                
-        st.markdown("---")
-        st.subheader("Lista de Clientes")
-        df_cli = pd.read_sql_query("SELECT id, nome, email, telefone, cidade, data_cadastro FROM clientes", conn)
-        st.dataframe(df_cli, use_container_width=True)
-
-    elif menu == "📦 Produtos & Stock":
-        st.header("📦 Gestão de Produtos e Stock")
-        
-        with st.form("form_produto"):
-            p_nome = st.text_input("Nome do Produto")
-            p_preco = st.number_input("Preço Unitário (R$)", min_value=0.0, format="%.2f")
-            p_stock = st.number_input("Quantidade em Stock", min_value=0, step=1)
-            btn_add_p = st.form_submit_button("Guardar Produto")
-            
-            if btn_add_p and p_nome:
-                cursor = conn.cursor()
-                cursor.execute("INSERT INTO produtos (nome, preco, stock) VALUES (?, ?, ?)", (p_nome, p_preco, p_stock))
-                conn.commit()
-                registar_log(st.session_state["usuario_atual"], st.session_state["email_atual"], "Produto", f"Produto {p_nome} criado", "Sucesso")
-                st.success(f"Produto '{p_nome}' registado com sucesso!")
-                st.rerun()
-                
-        st.markdown("---")
-        st.subheader("Catálogo Atual")
-        df_prod = pd.read_sql_query("SELECT id, nome, preco, stock FROM produtos", conn)
-        st.dataframe(df_prod, use_container_width=True)
-
-    elif menu == "🛒 Vendas":
-        st.header("🛒 Registar Venda")
-        
-        df_cli = pd.read_sql_query("SELECT nome FROM clientes", conn)
-        df_prod = pd.read_sql_query("SELECT nome, preco FROM produtos", conn)
-        
-        if df_cli.empty or df_prod.empty:
-            st.warning("⚠️ Precisa de registar pelo menos um cliente e um produto antes de efetuar vendas.")
-        else:
-            with st.form("form_venda"):
-                v_cliente = st.selectbox("Cliente", df_cli["nome"].tolist())
-                v_produto = st.selectbox("Produto", df_prod["nome"].tolist())
-                v_qtd = st.number_input("Quantidade", min_value=1, step=1)
-                btn_finalizar = st.form_submit_button("Finalizar Venda")
-                
-                if btn_finalizar:
-                    preco_unit = df_prod.loc[df_prod["nome"] == v_produto, "preco"].values[0]
-                    total = preco_unit * v_qtd
-                    data_v = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    
-                    cursor = conn.cursor()
-                    cursor.execute("INSERT INTO vendas (cliente, produto, quantidade, valor_total, data_venda) VALUES (?, ?, ?, ?, ?)",
-                                   (v_cliente, v_produto, v_qtd, total, data_v))
-                    conn.commit()
-                    registar_log(st.session_state["usuario_atual"], st.session_state["email_atual"], "Venda", f"Venda de {v_qtd}x {v_produto} para {v_cliente}", "Sucesso")
-                    st.success(f"Venda registada com sucesso! Total: R$ {total:,.2f}")
-                    st.rerun()
-                    
-        st.markdown("---")
-        st.subheader("Histórico de Vendas")
-        df_vendas_hist = pd.read_sql_query("SELECT id, cliente, produto, quantidade, valor_total, data_venda FROM vendas", conn)
-        st.dataframe(df_vendas_hist, use_container_width=True)
-
-    elif menu == "📋 Relatórios":
-        st.header("📋 Relatórios e Indicadores")
-        st.info("Aqui pode extrair o panorama completo das operações financeiras e de stock.")
-        
-        try:
-            df_v = pd.read_sql_query("SELECT * FROM vendas", conn)
-            if not df_v.empty:
-                st.subheader("Resumo Consolidado de Vendas")
-                st.dataframe(df_v, use_container_width=True)
-            else:
-                st.info("Sem dados de vendas disponíveis.")
-        except Exception as e:
-            st.error(f"Erro ao gerar relatório: {e}")
-
-    elif menu == "🛡️ Logs e Auditoria" and st.session_state["nivel_acesso"] == "Administrador":
-        st.header("🛡️ Registo de Auditoria e Segurança")
-        st.markdown("Registo detalhado de todas as atividades efetuadas no sistema (logins, criação de contas, operações e alterações).")
-        st.markdown("---")
-        
-        df_logs = pd.read_sql_query("SELECT data_hora, usuario, email, acao, detalhes, resultado FROM historico ORDER BY id DESC", conn)
-        if not df_logs.empty:
-            st.dataframe(df_logs, use_container_width=True)
-        else:
-            st.info("Ainda não existem registos de auditoria.")
-
-    conn.close()
+            c_email = st.text
