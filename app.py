@@ -1,7 +1,6 @@
-from datetime import datetime, timedelta
-import hashlib
-import sqlite3
 import streamlit as st
+import sqlite3
+import hashlib
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
@@ -11,18 +10,16 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- 2. ESTILIZAÇÃO VISUAL (TEMA ESCURO GRAFITE) ---
+# --- 2. ESTILIZAÇÃO VISUAL ---
 st.markdown("""
     <style>
     .stApp {
         background-color: #0e1117;
         color: #e2e8f0;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     h1, h2, h3 {
         color: #f0f6fc;
-        font-weight: 600;
-        letter-spacing: -0.025em;
     }
     [data-testid="stSidebar"] {
         background-color: #11151c;
@@ -33,37 +30,13 @@ st.markdown("""
 
 DB_FILE = "evolution_gestao.db"
 
-# --- 3. MAPEAMENTO DE PAÍSES E MOEDAS ---
-PAISES_MOEDAS = {
-    "Brasil": {"moeda": "BRL", "simbolo": "R$", "idioma": "Português"},
-    "Portugal": {"moeda": "EUR", "simbolo": "€", "idioma": "Português"},
-    "Estados Unidos": {"moeda": "USD", "simbolo": "US$", "idioma": "English"},
-    "Espanha": {"moeda": "EUR", "simbolo": "€", "idioma": "Español"},
-    "Reino Unido": {"moeda": "GBP", "simbolo": "£", "idioma": "English"},
-}
-
-# --- 4. FUNÇÕES DE SEGURANÇA E HASH ---
 def gerar_hash_senha(senha):
     return hashlib.sha256(senha.encode('utf-8')).hexdigest()
 
-# --- 5. INICIALIZAÇÃO DA BASE DE DADOS ---
+# --- 3. BASE DE DADOS ---
 try:
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS empresa (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT,
-            pais TEXT,
-            pais_registro TEXT,
-            moeda TEXT,
-            simbolo TEXT,
-            idioma TEXT,
-            fuso TEXT
-        )
-    """)
-
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,116 +45,105 @@ try:
             email TEXT,
             senha TEXT,
             nivel TEXT,
-            ativo INTEGER DEFAULT 1,
-            session_token TEXT,
-            token_expiry TEXT
+            ativo INTEGER DEFAULT 1
         )
     """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS historico (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario TEXT,
-            username TEXT,
-            email TEXT,
-            acao TEXT,
-            detalhes TEXT,
-            resultado TEXT,
-            servico TEXT,
-            codigo_erro TEXT,
-            rastreamento_id TEXT,
-            data_hora TEXT
-        )
-    """)
-
     conn.commit()
-
-    cursor.execute("SELECT COUNT(*) FROM empresa")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute(
-            "INSERT INTO empresa (nome, pais, pais_registro, moeda, simbolo, idioma, fuso) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("Evolution Corp Brasil", "Brasil", "Brasil", "BRL", "R$", "Português", "UTC-3"),
-        )
-        conn.commit()
-
     conn.close()
-except Exception as db_err:
-    st.error(f"Erro crítico ao inicializar a base de dados: {db_err}")
-    st.stop()
+except Exception as e:
+    st.error(f"Erro na BD: {e}")
 
-# --- 6. FUNÇÕES AUXILIARES ---
-def carregar_empresa():
-    try:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("SELECT nome, pais, pais_registro, moeda, simbolo, idioma, fuso FROM empresa LIMIT 1")
-        row = cursor.fetchone()
-        conn.close()
-        if row:
-            pais_l = row[1] or "Brasil"
-            info_pais = PAISES_MOEDAS.get(pais_l, PAISES_MOEDAS["Brasil"])
-            return {
-                "nome": row[0] or "Evolution Corp Brasil",
-                "pais": pais_l,
-                "pais_registro": row[2] or "Brasil",
-                "moeda": row[3] or info_pais["moeda"],
-                "simbolo": row[4] or info_pais["simbolo"],
-                "idioma": row[5] or info_pais["idioma"],
-                "fuso": row[6] or "UTC-3",
-            }
-    except Exception as e:
-        print(f"Erro ao carregar empresa: {e}")
-
-    return {
-        "nome": "Evolution Corp Brasil",
-        "pais": "Brasil",
-        "pais_registro": "Brasil",
-        "moeda": "BRL",
-        "simbolo": "R$",
-        "idioma": "Português",
-        "fuso": "UTC-3",
-    }
-
-def registrar_historico(usuario, username, email, acao, detalhes, resultado):
-    try:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        cursor.execute(
-            """INSERT INTO historico (usuario, username, email, acao, detalhes, resultado, servico, data_hora) 
-               VALUES (?, ?, ?, ?, ?, ?, 'Sistema', ?)""",
-            (usuario, username, email, acao, detalhes, resultado, data_hora),
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"Erro ao registar log: {e}")
-
-emp = carregar_empresa()
-
-# --- 7. GESTÃO DE SESSÃO ---
+# --- 4. GESTÃO DE SESSÃO SEGURA ---
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 if "usuario_atual" not in st.session_state:
     st.session_state["usuario_atual"] = ""
-if "username_atual" not in st.session_state:
-    st.session_state["username_atual"] = ""
 if "nivel_acesso" not in st.session_state:
     st.session_state["nivel_acesso"] = ""
 
-# --- 8. BARRA LATERAL ---
-menu = "Dashboard"
+# Se estiver marcado como autenticado mas o nome estiver vazio, força reset
+if st.session_state["autenticado"] and not st.session_state["usuario_atual"]:
+    st.session_state["autenticado"] = False
+
+# --- 5. BARRA LATERAL ---
 with st.sidebar:
-    st.markdown(f"### {emp['nome']}")
+    st.markdown("### Evolution Corp Brasil")
     st.markdown("---")
     if st.session_state["autenticado"]:
         st.markdown(f"👤 **{st.session_state['usuario_atual']}**\n🔑 Nível: `{st.session_state['nivel_acesso']}`")
         st.markdown("---")
-        lista_menus = ["Dashboard", "Clientes", "Produtos", "Estoque", "Vendas", "Pedidos", "Relatórios", "Tarefas", "Configurações"]
-        if st.session_state["nivel_acesso"] == "Administrador":
-            lista_menus.append("Logs do Sistema")
-
-        menu = st.radio("Navegação Principal", lista_menus, label_visibility="collapsed")
-        st.markdown("---")
         if st.button("Terminar Sessão", use_container_width=True):
             st.session_state["autenticado"] = False
+            st.session_state["usuario_atual"] = ""
+            st.session_state["nivel_acesso"] = ""
+            st.rerun()
+    else:
+        st.warning("⚠️ Efetue login para aceder.")
+
+# --- 6. INTERFACE PRINCIPAL ---
+if not st.session_state["autenticado"]:
+    st.title("🚀 A Evolution Gestão Online")
+    
+    tab1, tab2 = st.tabs(["🔑 Iniciar Sessão", "📝 Registar Conta"])
+    
+    with tab1:
+        st.markdown("### Acesso Direto ao Sistema")
+        with st.form("form_login"):
+            email = st.text_input("E-mail corporativo").strip().lower()
+            senha = st.text_input("Palavra-passe", type="password")
+            entrar = st.form_submit_button("Entrar no Sistema", use_container_width=True)
+            
+            if entrar:
+                if email and senha:
+                    conn = sqlite3.connect(DB_FILE)
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT nome, nivel, senha FROM usuarios WHERE email = ?", (email,))
+                    user = cursor.fetchone()
+                    conn.close()
+                    
+                    if user and user[2] == gerar_hash_senha(senha):
+                        st.session_state["autenticado"] = True
+                        st.session_state["usuario_atual"] = user[0]
+                        st.session_state["nivel_acesso"] = user[1]
+                        st.success("Sessão iniciada com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error("E-mail ou palavra-passe incorretos.")
+                else:
+                    st.warning("Preencha todos os campos.")
+                    
+    with tab2:
+        st.markdown("### Criar Conta Rápida")
+        with st.form("form_registo"):
+            r_nome = st.text_input("Nome Completo")
+            r_user = st.text_input("Username")
+            r_email = st.text_input("E-mail Corporativo")
+            r_senha = st.text_input("Palavra-passe (mín. 6 caracteres)", type="password")
+            r_nivel = st.selectbox("Nível de Acesso", ["Administrador", "Gerente", "Funcionário"])
+            registar = st.form_submit_button("Criar Conta", use_container_width=True)
+            
+            if registar:
+                if r_nome and r_email and r_senha:
+                    if len(r_senha) < 6:
+                        st.error("A palavra-passe deve ter pelo menos 6 caracteres.")
+                    else:
+                        conn = sqlite3.connect(DB_FILE)
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT id FROM usuarios WHERE email = ?", (r_email.lower(),))
+                        if cursor.fetchone():
+                            conn.close()
+                            st.error("Este e-mail já está registado.")
+                        else:
+                            cursor.execute(
+                                "INSERT INTO usuarios (nome, username, email, senha, nivel, ativo) VALUES (?, ?, ?, ?, ?, 1)",
+                                (r_nome, r_user, r_email.lower(), gerar_hash_senha(r_senha), r_nivel)
+                            )
+                            conn.commit()
+                            conn.close()
+                            st.success("Conta criada com sucesso! Vá à aba 'Iniciar Sessão' para entrar.")
+                else:
+                    st.warning("Preencha os campos obrigatórios.")
+else:
+    st.header("📊 Painel Principal — Evolution Gestão Online")
+    st.markdown(f"Bem-vindo(a) de volta, **{st.session_state['usuario_atual']}**!")
+    st.info("O sistema está totalmente operacional e pronto para gerir as suas operações.")
