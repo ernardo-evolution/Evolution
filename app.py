@@ -364,8 +364,7 @@ try:
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT nome, username, nivel, token_expiry FROM usuarios WHERE session_token ="
-        " ? AND ativo = 1",
+        "SELECT nome, username, nivel, token_expiry FROM usuarios WHERE session_token = ? AND ativo = 1",
         (token_persistencia,),
     )
     user_data = cursor.fetchone()
@@ -392,9 +391,7 @@ def formatar_moeda(valor):
     v = float(valor)
   except:
     v = 0.0
-  return f"{simbolo_ativo} {v:,.2f}".replace(",", "X").replace(".", ",").replace(
-      "X", "."
-  )
+  return f"{simbolo_ativo} {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 # --- 8. BARRA LATERAL REFINADA ---
@@ -567,89 +564,4 @@ if not st.session_state["autenticado"]:
 
   elif st.session_state["modo_recuperacao"]:
     st.markdown("### 🔑 Recuperar Acesso / Obter Código Direto")
-    st.markdown("Insira o seu e-mail corporativo registado para receber um novo código de verificação imediatamente.")
-
-    with st.form("form_recuperar_acesso"):
-      email_rec = st.text_input("E-mail associado à conta").strip().lower()
-      col_r1, col_r2 = st.columns(2)
-      with col_r1:
-        btn_enviar_rec = st.form_submit_button("Enviar Código por E-mail", use_container_width=True)
-      with col_r2:
-        btn_voltar_login = st.form_submit_button("Voltar ao Login", use_container_width=True)
-
-      rastreamento_id = secrets.token_hex(6)
-
-      if btn_enviar_rec:
-        if not email_rec or "@" not in email_rec:
-          st.error("Insira um endereço de e-mail válido.")
-        else:
-          conn = sqlite3.connect(DB_FILE)
-          cursor = conn.cursor()
-          cursor.execute("SELECT id, nome, username FROM usuarios WHERE email = ?", (email_rec,))
-          u_data = cursor.fetchone()
-
-          if u_data:
-            u_id, u_nome, u_username = u_data
-            novo_codigo = f"{random.randint(0, 999999):06d}"
-            nova_expiracao = (datetime.now() + timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S")
-
-            cursor.execute(
-                "UPDATE usuarios SET codigo_verificacao = ?, codigo_expiracao = ?, tentativas_codigo = 0 WHERE id = ?",
-                (novo_codigo, nova_expiracao, u_id)
-            )
-            conn.commit()
-            conn.close()
-
-            registrar_historico_profissional(u_nome, u_username, email_rec, "Recuperação de Acesso", "Solicitação de envio direto de código", "Pendente", "EmailJS", "", rastreamento_id)
-            sucesso_ej, msg_ej = disparar_emailjs(email_rec, u_nome, novo_codigo, rastreamento_id)
-
-            if sucesso_ej:
-              st.session_state["aguardando_verificacao"] = email_rec
-              st.session_state["modo_recuperacao"] = False
-              st.success("Código de verificação enviado com sucesso para o seu e-mail via EmailJS!")
-              st.rerun()
-            else:
-              st.error(f"Erro ao enviar e-mail via EmailJS: {msg_ej}")
-          else:
-            conn.close()
-            st.error("Este e-mail não se encontra registado no sistema.")
-
-      if btn_voltar_login:
-        st.session_state["modo_recuperacao"] = False
-        st.rerun()
-
-  else:
-    tab_login, tab_registo = st.tabs(["🔑 Iniciar Sessão", "📝 Registar Conta"])
-
-    with tab_login:
-      st.markdown("### Acesso Restrito ao Sistema")
-      with st.form("form_login_main"):
-        email_login = st.text_input("E-mail corporativo").strip()
-        senha_login = st.text_input("Palavra-passe / Senha", type="password")
-        lembrar_sessao = st.checkbox("Lembrar de mim neste dispositivo")
-        btn_entrar = st.form_submit_button("Entrar no Sistema")
-
-        rastreamento_id = secrets.token_hex(6)
-
-        if btn_entrar:
-          if email_login and senha_login:
-            conn = sqlite3.connect(DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT id, nome, username, senha, nivel, ativo FROM usuarios WHERE email = ?",
-                (email_login.lower(),),
-            )
-            user = cursor.fetchone()
-
-            if user:
-              user_id, nome_u, username_u, senha_db, nivel_u, ativo_u = user
-              senha_hash_input = gerar_hash_senha(senha_login)
-
-              if senha_db != senha_hash_input:
-                conn.close()
-                registrar_historico_profissional(nome_u, username_u, email_login, "Tentativa de Login", "Palavra-passe incorreta", "Falha", "Sistema", "ERR_SENHA_ERRADA", rastreamento_id)
-                st.error("Credenciais inválidas. Verifique o seu e-mail e palavra-passe.")
-              elif ativo_u == 0:
-                conn.close()
-                st.session_state["aguardando_verificacao"] = email_login.lower()
-                registrar_historico_profissional(nome_u, username_u, email_login, "Tentativa de Acesso sem Verificação",
+    st.markdown("Insira o seu
