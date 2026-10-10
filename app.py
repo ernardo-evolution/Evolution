@@ -2,40 +2,80 @@ import streamlit as st
 import sqlite3
 import hashlib
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
+import re
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
-    page_title="A Evolution Gestão Online",
-    page_icon="🚀",
+    page_title="Evolution | Gestão Online",
+    page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# --- 2. ESTILIZAÇÃO VISUAL PROFISSIONAL ---
+# --- 2. IDENTIDADE VISUAL OFICIAL (PALETA CORPORATIVA) ---
 st.markdown("""
     <style>
+    :root {
+        --bg-deep: #080B11;
+        --bg-graphite: #111722;
+        --bg-surface: #151C27;
+        --border-color: #293343;
+        --text-main: #F5F7FA;
+        --text-secondary: #A7B2C3;
+        --accent-blue: #087BFF;
+        --accent-glow: #00BFFF;
+    }
+    
     .stApp {
-        background-color: #0e1117;
-        color: #e2e8f0;
+        background-color: var(--bg-deep);
+        color: var(--text-main);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
-    h1, h2, h3 {
-        color: #f0f6fc;
+    
+    h1, h2, h3, h4 {
+        color: var(--text-main);
+        letter-spacing: -0.025em;
     }
+    
     [data-testid="stSidebar"] {
-        background-color: #11151c;
-        border-right: 1px solid #21262d;
+        background-color: var(--bg-graphite);
+        border-right: 1px solid var(--border-color);
+    }
+    
+    /* Centralização e largura máxima otimizada para o Login/Registo */
+    .auth-container {
+        max-width: 480px;
+        margin: 0 auto;
+        padding: 2rem;
+        background-color: var(--bg-graphite);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     }
     </style>
 """, unsafe_allow_html=True)
 
 DB_FILE = "evolution_gestao.db"
 
+# --- 3. FUNÇÕES DE SEGURANÇA E VALIDAÇÃO ---
 def gerar_hash_senha(senha):
     return hashlib.sha256(senha.encode('utf-8')).hexdigest()
 
-# --- 3. BASE DE DADOS E MIGRAÇÃO AUTOMÁTICA ---
+def validar_forca_senha(senha):
+    if len(senha) < 8:
+        return "A palavra-passe deve ter pelo menos 8 caracteres."
+    if not re.search(r"[a-z]", senha):
+        return "A palavra-passe deve conter pelo menos uma letra minúscula."
+    if not re.search(r"[0-9]", senha):
+        return "A palavra-passe deve conter pelo menos um número."
+    return None
+
+def validar_email(email):
+    padrao = r"^[\w\.-]+@[\w\.-]+\.\w+$"
+    return re.match(padrao, email) is not None
+
+# --- 4. INICIALIZAÇÃO DA BASE DE DADOS E MIGRAÇÕES ---
 try:
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -44,25 +84,35 @@ try:
         CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nome TEXT,
-            username TEXT,
-            email TEXT,
+            username TEXT UNIQUE,
+            email TEXT UNIQUE,
             senha TEXT,
-            nivel TEXT,
-            ativo INTEGER DEFAULT 1
+            nivel TEXT DEFAULT 'Funcionário',
+            ativo INTEGER DEFAULT 1,
+            email_verificado INTEGER DEFAULT 0,
+            codigo_verificacao TEXT,
+            token_recuperacao TEXT,
+            token_expiracao TEXT
         )
     """)
     
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS clientes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT
+            nome TEXT,
+            email TEXT,
+            telefone TEXT,
+            cidade TEXT,
+            data_cadastro TEXT
         )
     """)
     
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS produtos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT
+            nome TEXT,
+            preco REAL DEFAULT 0.0,
+            stock INTEGER DEFAULT 0
         )
     """)
     
@@ -88,30 +138,40 @@ try:
             data_hora TEXT
         )
     """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chamados (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            protocolo TEXT UNIQUE,
+            usuario_email TEXT,
+            nome TEXT,
+            categoria TEXT,
+            assunto TEXT,
+            descricao TEXT,
+            prioridade TEXT,
+            estado TEXT DEFAULT 'Aberto',
+            data_hora TEXT
+        )
+    """)
     
     conn.commit()
 
+    # Garantir colunas essenciais
     def garantir_coluna(tabela, coluna, definicao):
         cursor.execute(f"PRAGMA table_info({tabela})")
-        colunas_existentes = [col[1] for col in cursor.fetchall()]
-        if coluna not in colunas_existentes:
-            try:
-                cursor.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {definicao}")
-                conn.commit()
-            except Exception as e:
-                print(f"Erro ao adicionar coluna {coluna} em {tabela}: {e}")
+        colunas = [col[1] for col in cursor.fetchall()]
+        if coluna not in colunas:
+            cursor.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {definicao}")
+            conn.commit()
 
-    garantir_coluna("clientes", "email", "TEXT")
-    garantir_coluna("clientes", "telefone", "TEXT")
-    garantir_coluna("clientes", "cidade", "TEXT")
-    garantir_coluna("clientes", "data_cadastro", "TEXT")
-
-    garantir_coluna("produtos", "preco", "REAL DEFAULT 0.0")
-    garantir_coluna("produtos", "stock", "INTEGER DEFAULT 0")
+    garantir_coluna("usuarios", "email_verificado", "INTEGER DEFAULT 0")
+    garantir_coluna("usuarios", "codigo_verificacao", "TEXT")
+    garantir_coluna("usuarios", "token_recuperacao", "TEXT")
+    garantir_coluna("usuarios", "token_expiracao", "TEXT")
 
     conn.close()
 except Exception as e:
-    st.error(f"Erro na BD: {e}")
+    st.error(f"Erro crítico na Base de Dados: {e}")
 
 def registar_log(usuario, email, acao, detalhes, resultado):
     try:
@@ -120,14 +180,14 @@ def registar_log(usuario, email, acao, detalhes, resultado):
         data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         cursor.execute(
             "INSERT INTO historico (usuario, email, acao, detalhes, resultado, data_hora) VALUES (?, ?, ?, ?, ?, ?)",
-            (usuario or "Anónimo", email or "N/D", acao, detalhes, resultado, data_hora)
+            (usuario or "Sistema", email or "N/D", acao, detalhes, resultado, data_hora)
         )
         conn.commit()
         conn.close()
     except Exception as ex:
-        print(f"Erro ao gravar log: {ex}")
+        print(f"Erro ao registar log: {ex}")
 
-# --- 4. GESTÃO DE SESSÃO E PERSISTÊNCIA ---
+# --- 5. GESTÃO DE SESSÃO ---
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 if "usuario_atual" not in st.session_state:
@@ -138,135 +198,239 @@ if "nivel_acesso" not in st.session_state:
     st.session_state["nivel_acesso"] = ""
 if "email_input" not in st.session_state:
     st.session_state["email_input"] = ""
+if "modo_recuperacao" not in st.session_state:
+    st.session_state["modo_recuperacao"] = False
 
-# Persistência via URL (Lembrar de mim)
+# Persistência segura controlada por sessão
 try:
-    query_params = st.query_params
-    email_persisted = query_params.get("email", None)
-    if not st.session_state["autenticado"] and email_persisted:
+    if not st.session_state["autenticado"] and "email_sessao" in st.session_state:
+        email_p = st.session_state["email_sessao"]
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
-        cursor.execute("SELECT nome, nivel, email FROM usuarios WHERE email = ?", (email_persisted,))
-        user_persisted = cursor.fetchone()
+        cursor.execute("SELECT nome, nivel, email, ativo FROM usuarios WHERE email = ?", (email_p,))
+        u_pers = cursor.fetchone()
         conn.close()
-        if user_persisted:
+        if u_pers and u_pers[3] == 1:
             st.session_state["autenticado"] = True
-            st.session_state["usuario_atual"] = user_persisted[0]
-            st.session_state["nivel_acesso"] = user_persisted[1]
-            st.session_state["email_atual"] = user_persisted[2]
+            st.session_state["usuario_atual"] = u_pers[0]
+            st.session_state["nivel_acesso"] = u_pers[1]
+            st.session_state["email_atual"] = u_pers[2]
 except Exception as ex:
-    print(f"Erro na persistência: {ex}")
+    print(f"Erro na persistência de sessão: {ex}")
 
-# --- 5. BARRA LATERAL E NAVEGAÇÃO ---
-menu = "Dashboard"
+# --- 6. BARRA LATERAL E NAVEGAÇÃO ---
+menu = "Visão geral"
 with st.sidebar:
-    st.markdown("### 🚀 Evolution Gestão")
+    st.markdown("### ⚡ EVOLUTION")
+    st.caption("GESTÃO ONLINE")
     st.markdown("---")
+    
     if st.session_state["autenticado"]:
-        st.markdown(f"👤 **{st.session_state['usuario_atual']}**\n📧 `{st.session_state['email_atual']}`\n🔑 Nível: `{st.session_state['nivel_acesso']}`")
+        st.markdown(f"👤 **{st.session_state['usuario_atual']}**")
+        st.caption(f"📧 {st.session_state['email_atual']}")
+        st.caption(f"🔑 Nível: {st.session_state['nivel_acesso']}")
         st.markdown("---")
         
-        opcoes_menu = ["📊 Dashboard", "👥 Clientes", "📦 Produtos & Stock", "🛒 Vendas", "📋 Relatórios"]
+        opcoes = [
+            "Visão geral", "Vendas", "Clientes", "Produtos", 
+            "Estoque", "Relatórios", "Ajuda e Suporte", "Configurações"
+        ]
         if st.session_state["nivel_acesso"] == "Administrador":
-            opcoes_menu.append("🛡️ Logs e Auditoria")
+            opcoes.append("Administração")
             
-        menu = st.selectbox("Menu Principal", opcoes_menu)
+        menu = st.selectbox("Navegação", opcoes, label_visibility="collapsed")
         
         st.markdown("---")
-        if st.button("Terminar Sessão", use_container_width=True):
+        if st.button("Terminar sessão", use_container_width=True):
             registar_log(st.session_state["usuario_atual"], st.session_state["email_atual"], "Logout", "Encerramento de sessão", "Sucesso")
-            if "email" in st.query_params:
-                del st.query_params["email"]
             st.session_state["autenticado"] = False
             st.session_state["usuario_atual"] = ""
             st.session_state["email_atual"] = ""
             st.session_state["nivel_acesso"] = ""
+            if "email_sessao" in st.session_state:
+                del st.session_state["email_sessao"]
+            st.success("Sessão encerrada com sucesso.")
             st.rerun()
     else:
-        st.warning("⚠️ Efetue login para aceder.")
+        st.info("Acesse a plataforma para visualizar os menus operacionais.")
 
-# --- 6. INTERFACE DE LOGIN / REGISTO ---
+# --- 7. FLUXO DE AUTENTICAÇÃO E REGISTO ---
 if not st.session_state["autenticado"]:
-    st.title("🚀 A Evolution Gestão Online")
+    col1, col2, col3 = st.columns([1, 1.2, 1])
     
-    tab1, tab2 = st.tabs(["🔑 Iniciar Sessão", "📝 Registar Conta"])
-    
-    with tab1:
-        st.markdown("### Acesso Restrito ao Sistema")
-        with st.form("form_login"):
-            email = st.text_input("E-mail corporativo", value=st.session_state["email_input"]).strip().lower()
-            senha = st.text_input("Palavra-passe", type="password")
-            lembrar = st.checkbox("Lembrar de mim neste dispositivo")
-            entrar = st.form_submit_button("Entrar no Sistema", use_container_width=True)
+    with col2:
+        st.markdown("<div style='text-align: center; padding-top: 1rem;'>", unsafe_allow_html=True)
+        st.markdown("## ⚡ EVOLUTION")
+        st.caption("GESTÃO ONLINE")
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        if st.session_state["modo_recuperacao"]:
+            st.markdown("### Recuperação de Acesso")
+            st.caption("Informe seu e-mail corporativo para receber as instruções.")
             
-        if entrar:
-            st.session_state["email_input"] = email
-            if email and senha:
-                conn = sqlite3.connect(DB_FILE)
-                cursor = conn.cursor()
-                cursor.execute("SELECT nome, nivel, senha, email FROM usuarios WHERE email = ?", (email,))
-                user = cursor.fetchone()
-                conn.close()
+            with st.form("form_recuperacao"):
+                email_rec = st.text_input("E-mail corporativo", placeholder="nome@empresa.com").strip().lower()
+                enviar_rec = st.form_submit_button("Enviar instruções", use_container_width=True)
                 
-                if user and user[2] == gerar_hash_senha(senha):
-                    st.session_state["autenticado"] = True
-                    st.session_state["usuario_atual"] = user[0]
-                    st.session_state["nivel_acesso"] = user[1]
-                    st.session_state["email_atual"] = user[3]
-                    
-                    if lembrar:
-                        st.query_params["email"] = user[3]
+                if enviar_rec:
+                    if validar_email(email_rec):
+                        conn = sqlite3.connect(DB_FILE)
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT id FROM usuarios WHERE email = ?", (email_rec,))
+                        existe = cursor.fetchone()
+                        conn.close()
                         
-                    registar_log(user[0], user[3], "Login", "Sessão iniciada com sucesso", "Sucesso")
-                    st.success("Sessão iniciada com sucesso!")
-                    st.rerun()
-                else:
-                    registar_log("Desconhecido", email, "Login", "Tentativa com credenciais inválidas", "Falha")
-                    st.error("E-mail ou palavra-passe incorretos.")
-            else:
-                st.warning("Preencha todos os campos.")
-                    
-    with tab2:
-        st.markdown("### Criar Conta Corporativa")
-        with st.form("form_registo"):
-            r_nome = st.text_input("Nome Completo *")
-            r_user = st.text_input("Username *")
-            r_email = st.text_input("E-mail Corporativo *")
-            r_senha = st.text_input("Palavra-passe (mín. 6 caracteres) *", type="password")
-            r_nivel = st.selectbox("Nível de Acesso", ["Administrador", "Gerente", "Funcionário"])
-            registar = st.form_submit_button("Criar Conta", use_container_width=True)
-            
-        if registar:
-            if r_nome and r_email and r_senha and r_user:
-                if len(r_senha) < 6:
-                    st.error("A palavra-passe deve ter pelo menos 6 caracteres.")
-                else:
-                    conn = sqlite3.connect(DB_FILE)
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT id FROM usuarios WHERE email = ? OR username = ?", (r_email.lower(), r_user.strip()))
-                    if cursor.fetchone():
-                        conn.close()
-                        registar_log(r_nome, r_email, "Registo", "Tentativa com e-mail/username duplicado", "Falha")
-                        st.error("Este e-mail ou username já se encontra registado.")
+                        if existe:
+                            token_seguro = hashlib.sha256(str(datetime.now()).encode()).hexdigest()[:12]
+                            exp = datetime.now() + timedelta(hours=1)
+                            conn = sqlite3.connect(DB_FILE)
+                            cursor = conn.cursor()
+                            cursor.execute("UPDATE usuarios SET token_recuperacao = ?, token_expiracao = ? WHERE email = ?", (token_seguro, str(exp), email_rec))
+                            conn.commit()
+                            conn.close()
+                            registar_log("Sistema", email_rec, "Recuperação de Senha", "Token de recuperação gerado", "Sucesso")
+                        
+                        st.success("Se existir uma conta elegível para este endereço, enviaremos as instruções de recuperação.")
                     else:
-                        cursor.execute(
-                            "INSERT INTO usuarios (nome, username, email, senha, nivel, ativo) VALUES (?, ?, ?, ?, ?, 1)",
-                            (r_nome.strip(), r_user.strip(), r_email.lower(), gerar_hash_senha(r_senha), r_nivel)
-                        )
-                        conn.commit()
-                        conn.close()
-                        registar_log(r_nome.strip(), r_email.lower(), "Registo", "Nova conta criada com sucesso", "Sucesso")
-                        st.success("Conta criada com sucesso! Vá à aba 'Iniciar Sessão' para entrar.")
-            else:
-                st.warning("Preencha todos os campos obrigatórios (*).")
+                        st.error("Formato de e-mail inválido.")
+            
+            if st.button("Voltar ao login"):
+                st.session_state["modo_recuperacao"] = False
+                st.rerun()
+                
+        else:
+            tab_login, tab_registo, tab_ajuda = st.tabs(["Entrar", "Criar conta", "Ajuda"])
+            
+            with tab_login:
+                st.markdown("### Bem-vindo de volta")
+                st.caption("Acesse sua conta para continuar na plataforma.")
+                
+                with st.form("form_login_principal"):
+                    email_l = st.text_input("E-mail corporativo", placeholder="nome@empresa.com", value=st.session_state["email_input"]).strip().lower()
+                    senha_l = st.text_input("Palavra-passe", type="password", placeholder="Digite sua palavra-passe")
+                    lembrar_me = st.checkbox("Lembrar de mim neste dispositivo")
+                    btn_entrar = st.form_submit_button("Entrar na plataforma", use_container_width=True)
+                    
+                    if btn_entrar:
+                        st.session_state["email_input"] = email_l
+                        if not email_l or not senha_l:
+                            st.warning("Preencha todos os campos obrigatórios.")
+                        elif not validar_email(email_l):
+                            st.error("Formato de e-mail inválido.")
+                        else:
+                            conn = sqlite3.connect(DB_FILE)
+                            cursor = conn.cursor()
+                            cursor.execute("SELECT nome, nivel, senha, ativo, email FROM usuarios WHERE email = ?", (email_l,))
+                            user_data = cursor.fetchone()
+                            conn.close()
+                            
+                            if user_data and user_data[3] == 1 and user_data[2] == gerar_hash_senha(senha_l):
+                                st.session_state["autenticado"] = True
+                                st.session_state["usuario_atual"] = user_data[0]
+                                st.session_state["nivel_acesso"] = user_data[1]
+                                st.session_state["email_atual"] = user_data[4]
+                                
+                                if lembrar_me:
+                                    st.session_state["email_sessao"] = user_data[4]
+                                    
+                                registar_log(user_data[0], user_data[4], "Login", "Autenticação bem-sucedida", "Sucesso")
+                                st.success("Sessão iniciada com sucesso!")
+                                st.rerun()
+                            else:
+                                registar_log("Anónimo", email_l, "Login", "Tentativa de acesso inválida ou conta inativa", "Falha")
+                                st.error("Não foi possível entrar. Verifique seus dados e tente novamente.")
+                
+                if st.button("Esqueci minha senha", type="tertiary"):
+                    st.session_state["modo_recuperacao"] = True
+                    st.rerun()
 
-# --- 7. PAINEL DE GESTÃO E MÓDULOS OPERACIONAIS ---
+            with tab_registo:
+                st.markdown("### Crie sua conta")
+                st.caption("Cadastre-se para acessar a plataforma Evolution Gestão Online.")
+                
+                with st.form("form_registo_principal"):
+                    r_nome = st.text_input("Nome completo")
+                    r_user = st.text_input("Nome de usuário")
+                    r_email = st.text_input("E-mail", placeholder="nome@empresa.com").strip().lower()
+                    r_senha = st.text_input("Palavra-passe", type="password", placeholder="Mínimo 8 caracteres, com letra e número")
+                    r_conf = st.text_input("Confirmar palavra-passe", type="password")
+                    btn_cadastrar = st.form_submit_button("Criar conta", use_container_width=True)
+                    
+                    if btn_cadastrar:
+                        erro_pwd = validar_forca_senha(r_senha)
+                        if not r_nome or not r_user or not r_email or not r_senha:
+                            st.warning("Preencha todos os campos obrigatórios.")
+                        elif not validar_email(r_email):
+                            st.error("E-mail com formato inválido.")
+                        elif r_senha != r_conf:
+                            st.error("As palavras-passe não coincidem.")
+                        elif erro_pwd:
+                            st.error(erro_pwd)
+                        else:
+                            conn = sqlite3.connect(DB_FILE)
+                            cursor = conn.cursor()
+                            cursor.execute("SELECT id FROM usuarios WHERE email = ? OR username = ?", (r_email, r_user))
+                            duplicado = cursor.fetchone()
+                            
+                            if duplicado:
+                                conn.close()
+                                st.error("E-mail ou nome de usuário já registados.")
+                            else:
+                                # Verificar se é o primeiro usuário para torná-lo Administrador
+                                cursor.execute("SELECT COUNT(*) FROM usuarios")
+                                total_u = cursor.fetchone()[0]
+                                nivel_atribuido = "Administrador" if total_u == 0 else "Funcionário"
+                                
+                                cursor.execute(
+                                    "INSERT INTO usuarios (nome, username, email, senha, nivel, ativo, email_verificado) VALUES (?, ?, ?, ?, ?, 1, 1)",
+                                    (r_nome, r_user, r_email, gerar_hash_senha(r_senha), nivel_atribuido)
+                                )
+                                conn.commit()
+                                conn.close()
+                                registar_log(r_nome, r_email, "Registo", f"Conta criada com nível {nivel_atribuido}", "Sucesso")
+                                st.success("Conta criada com sucesso! Já pode efetuar login na aba anterior.")
+
+            with tab_ajuda:
+                st.markdown("### Ajuda e Suporte")
+                st.caption("Como podemos ajudar?")
+                pesquisa_ajuda = st.text_input("Pesquise uma dúvida...", placeholder="Ex: login, senha, relatórios")
+                
+                st.markdown("**Perguntas Frequentes:**")
+                st.markdown("- **Como faço login?** Utilize seu e-mail corporativo e palavra-passe na aba 'Entrar'.")
+                st.markdown("- **Esqueci minha senha:** Clique em 'Esqueci minha senha' para iniciar a recuperação.")
+                st.markdown("- **Problemas de acesso?** Contacte o administrador do sistema.")
+                
+                st.markdown("---")
+                st.markdown("#### Abrir Chamado de Suporte")
+                with st.form("form_suporte_publico"):
+                    s_nome = st.text_input("Seu nome")
+                    s_email = st.text_input("Seu e-mail")
+                    s_cat = st.selectbox("Categoria", ["Acesso à conta", "Problemas técnicos", "Outras dúvidas"])
+                    s_desc = st.text_area("Descrição detalhada do problema")
+                    btn_chamado = st.form_submit_button("Enviar solicitação")
+                    
+                    if btn_chamado:
+                        if s_nome and s_email and s_desc:
+                            proto = "EVO-" + hashlib.sha256(str(datetime.now()).encode()).hexdigest()[:6].upper()
+                            conn = sqlite3.connect(DB_FILE)
+                            cursor = conn.cursor()
+                            cursor.execute(
+                                "INSERT INTO chamados (protocolo, usuario_email, nome, categoria, assunto, descricao, prioridade, data_hora) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                (proto, s_email, s_nome, s_cat, "Suporte Público", s_desc, "Normal", datetime.now().strftime("%d/%m/%Y %H:%M"))
+                            )
+                            conn.commit()
+                            conn.close()
+                            st.success(f"Solicitação registada com sucesso! Guarde o protocolo: **{proto}**")
+                        else:
+                            st.warning("Preencha todos os campos para abrir o chamado.")
+
+# --- 8. PAINEL PRINCIPAL E MÓDULOS OPERACIONAIS ---
 else:
     conn = sqlite3.connect(DB_FILE)
     
-    if menu == "📊 Dashboard":
-        st.header("📊 Dashboard Executivo")
-        st.markdown(f"Bem-vindo(a) de volta, **{st.session_state['usuario_atual']}**! Aqui tens o resumo geral do teu negócio.")
+    if menu == "Visão geral":
+        st.header("Visão geral")
+        st.markdown(f"Bem-vindo(a) de volta, **{st.session_state['usuario_atual']}**.")
         st.markdown("---")
         
         try:
@@ -274,132 +438,177 @@ else:
             df_clientes = pd.read_sql_query("SELECT * FROM clientes", conn)
             df_produtos = pd.read_sql_query("SELECT * FROM produtos", conn)
             
-            total_faturamento = df_vendas["valor_total"].sum() if not df_vendas.empty else 0.0
-            total_vendas = len(df_vendas)
-            total_clientes = len(df_clientes)
-            total_produtos = len(df_produtos)
+            fat_total = df_vendas["valor_total"].sum() if not df_vendas.empty else 0.0
+            num_vendas = len(df_vendas)
+            num_clientes = len(df_clientes)
+            num_produtos = len(df_produtos)
             
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Faturamento Total", f"R$ {total_faturamento:,.2f}")
-            c2.metric("Total de Vendas", total_vendas)
-            c3.metric("Clientes Registados", total_clientes)
-            c4.metric("Produtos Cadastrados", total_produtos)
+            c1.metric("Faturamento Total", f"R$ {fat_total:,.2f}")
+            c2.metric("Total de Vendas", num_vendas)
+            c3.metric("Clientes Registados", num_clientes)
+            c4.metric("Produtos Cadastrados", num_produtos)
             
             st.markdown("---")
             if not df_vendas.empty:
-                st.subheader("📈 Evolução de Vendas")
+                st.subheader("Evolução de Vendas")
                 st.bar_chart(df_vendas, x="data_venda", y="valor_total")
             else:
-                st.info("Ainda não existem vendas registadas para gerar gráficos.")
+                st.info("Sem dados de vendas registados para exibição de gráficos.")
         except Exception as e:
-            st.error(f"Erro ao carregar dados do dashboard: {e}")
+            st.error(f"Erro ao carregar métricas do painel: {e}")
 
-    elif menu == "👥 Clientes":
-        st.header("👥 Gestão de Clientes")
-        
-        with st.form("form_cliente"):
-            c_nome = st.text_input("Nome do Cliente")
-            c_email = st.text_input("E-mail")
-            c_tel = st.text_input("Telefone")
-            c_cid = st.text_input("Cidade")
-            btn_add_c = st.form_submit_button("Adicionar Cliente")
-            
-        if btn_add_c and c_nome:
-            cursor = conn.cursor()
-            data_cad = datetime.now().strftime("%d/%m/%Y")
-            cursor.execute("INSERT INTO clientes (nome, email, telefone, cidade, data_cadastro) VALUES (?, ?, ?, ?, ?)",
-                           (c_nome, c_email, c_tel, c_cid, data_cad))
-            conn.commit()
-            msg_log = f"Cliente {c_nome} adicionado"
-            registar_log(st.session_state["usuario_atual"], st.session_state["email_atual"], "Cliente", msg_log, "Sucesso")
-            st.success(f"Cliente '{c_nome}' adicionado com sucesso!")
-            st.rerun()
-                
-        st.markdown("---")
-        st.subheader("Lista de Clientes")
-        df_cli = pd.read_sql_query("SELECT id, nome, email, telefone, cidade, data_cadastro FROM clientes", conn)
-        st.dataframe(df_cli, use_container_width=True)
-
-    elif menu == "📦 Produtos & Stock":
-        st.header("📦 Gestão de Produtos e Stock")
-        
-        with st.form("form_produto"):
-            p_nome = st.text_input("Nome do Produto")
-            p_preco = st.number_input("Preço Unitário (R$)", min_value=0.0, format="%.2f")
-            p_stock = st.number_input("Quantidade em Stock", min_value=0, step=1)
-            btn_add_p = st.form_submit_button("Guardar Produto")
-            
-        if btn_add_p and p_nome:
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO produtos (nome, preco, stock) VALUES (?, ?, ?)", (p_nome, p_preco, p_stock))
-            conn.commit()
-            msg_log = f"Produto {p_nome} criado"
-            registar_log(st.session_state["usuario_atual"], st.session_state["email_atual"], "Produto", msg_log, "Sucesso")
-            st.success(f"Produto '{p_nome}' registado com sucesso!")
-            st.rerun()
-                
-        st.markdown("---")
-        st.subheader("Catálogo Atual")
-        df_prod = pd.read_sql_query("SELECT id, nome, preco, stock FROM produtos", conn)
-        st.dataframe(df_prod, use_container_width=True)
-
-    elif menu == "🛒 Vendas":
-        st.header("🛒 Registar Venda")
-        
+    elif menu == "Vendas":
+        st.header("Gestão de Vendas")
         df_cli = pd.read_sql_query("SELECT nome FROM clientes", conn)
         df_prod = pd.read_sql_query("SELECT nome, preco FROM produtos", conn)
         
         if df_cli.empty or df_prod.empty:
-            st.warning("⚠️ Precisa de registar pelo menos um cliente e um produto antes de efetuar vendas.")
+            st.warning("Cadastre pelo menos um cliente e um produto antes de efetuar vendas.")
         else:
-            with st.form("form_venda"):
-                v_cliente = st.selectbox("Cliente", df_cli["nome"].tolist())
-                v_produto = st.selectbox("Produto", df_prod["nome"].tolist())
+            with st.form("form_registo_venda"):
+                v_cli = st.selectbox("Cliente", df_cli["nome"].tolist())
+                v_prod = st.selectbox("Produto", df_prod["nome"].tolist())
                 v_qtd = st.number_input("Quantidade", min_value=1, step=1)
-                btn_finalizar = st.form_submit_button("Finalizar Venda")
+                btn_venda = st.form_submit_button("Concluir Venda")
                 
-            if btn_finalizar:
-                preco_unit = df_prod.loc[df_prod["nome"] == v_produto, "preco"].values[0]
-                total = preco_unit * v_qtd
-                data_v = datetime.now().strftime("%Y-%m-%d %H:%M")
-                
-                cursor = conn.cursor()
-                cursor.execute("INSERT INTO vendas (cliente, produto, quantidade, valor_total, data_venda) VALUES (?, ?, ?, ?, ?)",
-                               (v_cliente, v_produto, v_qtd, total, data_v))
-                conn.commit()
-                msg_log = f"Venda de {v_qtd}x {v_produto} para {v_cliente}"
-                registar_log(st.session_state["usuario_atual"], st.session_state["email_atual"], "Venda", msg_log, "Sucesso")
-                st.success(f"Venda registada com sucesso! Total: R$ {total:,.2f}")
-                st.rerun()
+                if btn_venda:
+                    preco_unit = df_prod.loc[df_prod["nome"] == v_prod, "preco"].values[0]
+                    total_v = preco_unit * v_qtd
+                    data_v = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO vendas (cliente, produto, quantidade, valor_total, data_venda) VALUES (?, ?, ?, ?, ?)",
+                        (v_cli, v_prod, v_qtd, total_v, data_v)
+                    )
+                    conn.commit()
+                    registar_log(st.session_state["usuario_atual"], st.session_state["email_atual"], "Venda", f"Venda de {v_qtd}x {v_prod} para {v_cli}", "Sucesso")
+                    st.success(f"Venda registada com sucesso! Total: R$ {total_v:,.2f}")
+                    st.rerun()
                     
         st.markdown("---")
         st.subheader("Histórico de Vendas")
-        df_vendas_hist = pd.read_sql_query("SELECT id, cliente, produto, quantidade, valor_total, data_venda FROM vendas", conn)
-        st.dataframe(df_vendas_hist, use_container_width=True)
+        df_hist_vendas = pd.read_sql_query("SELECT * FROM vendas", conn)
+        st.dataframe(df_hist_vendas, use_container_width=True)
 
-    elif menu == "📋 Relatórios":
-        st.header("📋 Relatórios e Indicadores")
-        st.info("Aqui pode extrair o panorama completo das operações financeiras e de stock.")
-        
+    elif menu == "Clientes":
+        st.header("Gestão de Clientes")
+        with st.form("form_cliente_novo"):
+            c_nome = st.text_input("Nome do Cliente")
+            c_email = st.text_input("E-mail")
+            c_tel = st.text_input("Telefone")
+            c_cid = st.text_input("Cidade")
+            btn_c = st.form_submit_button("Guardar Cliente")
+            
+            if btn_c and c_nome:
+                cursor = conn.cursor()
+                data_cad = datetime.now().strftime("%d/%m/%Y")
+                cursor.execute(
+                    "INSERT INTO clientes (nome, email, telefone, cidade, data_cadastro) VALUES (?, ?, ?, ?, ?)",
+                    (c_nome, c_email, c_tel, c_cid, data_cad)
+                )
+                conn.commit()
+                registar_log(st.session_state["usuario_atual"], st.session_state["email_atual"], "Cliente", f"Cliente {c_nome} criado", "Sucesso")
+                st.success(f"Cliente '{c_nome}' guardado com sucesso!")
+                st.rerun()
+                
+        st.markdown("---")
+        df_clientes = pd.read_sql_query("SELECT * FROM clientes", conn)
+        st.dataframe(df_clientes, use_container_width=True)
+
+    elif menu == "Produtos":
+        st.header("Gestão de Produtos")
+        with st.form("form_produto_novo"):
+            p_nome = st.text_input("Nome do Produto")
+            p_preco = st.number_input("Preço Unitário (R$)", min_value=0.0, format="%.2f")
+            p_stock = st.number_input("Stock Inicial", min_value=0, step=1)
+            btn_p = st.form_submit_button("Guardar Produto")
+            
+            if btn_p and p_nome:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO produtos (nome, preco, stock) VALUES (?, ?, ?)",
+                    (p_nome, p_preco, p_stock)
+                )
+                conn.commit()
+                registar_log(st.session_state["usuario_atual"], st.session_state["email_atual"], "Produto", f"Produto {p_nome} criado", "Sucesso")
+                st.success(f"Produto '{p_nome}' guardado com sucesso!")
+                st.rerun()
+                
+        st.markdown("---")
+        df_produtos = pd.read_sql_query("SELECT * FROM produtos", conn)
+        st.dataframe(df_produtos, use_container_width=True)
+
+    elif menu == "Estoque":
+        st.header("Controle de Estoque")
+        df_estoque = pd.read_sql_query("SELECT id, nome, stock, preco FROM produtos", conn)
+        st.dataframe(df_estoque, use_container_width=True)
+
+    elif menu == "Relatórios":
+        st.header("Relatórios e Indicadores")
         try:
             df_v = pd.read_sql_query("SELECT * FROM vendas", conn)
             if not df_v.empty:
-                st.subheader("Resumo Consolidado de Vendas")
                 st.dataframe(df_v, use_container_width=True)
             else:
-                st.info("Sem dados de vendas disponíveis.")
+                st.info("Sem dados para exibição de relatórios.")
         except Exception as e:
-            st.error(f"Erro ao gerar relatório: {e}")
+            st.error(f"Erro ao gerar relatórios: {e}")
 
-    elif menu == "🛡️ Logs e Auditoria" and st.session_state["nivel_acesso"] == "Administrador":
-        st.header("🛡️ Registo de Auditoria e Segurança")
-        st.markdown("Registo detalhado de todas as atividades efetuadas no sistema (logins, criação de contas, operações e alterações).")
-        st.markdown("---")
+    elif menu == "Ajuda e Suporte":
+        st.header("Central de Ajuda e Suporte")
+        termo_pesquisa = st.text_input("Pesquise na Central de Ajuda...")
         
-        df_logs = pd.read_sql_query("SELECT data_hora, usuario, email, acao, detalhes, resultado FROM historico ORDER BY id DESC", conn)
-        if not df_logs.empty:
+        st.markdown("---")
+        st.subheader("Abrir Novo Chamado")
+        with st.form("form_chamado_interno"):
+            cat_c = st.selectbox("Categoria", ["Acesso à conta", "Gestão de usuários", "Problemas técnicos", "Outras dúvidas"])
+            assunto_c = st.text_input("Assunto")
+            desc_c = st.text_area("Descrição detalhada")
+            prioridade_c = st.selectbox("Prioridade", ["Baixa", "Normal", "Alta"])
+            btn_env_chamado = st.form_submit_button("Enviar solicitação")
+            
+            if btn_env_chamado and assunto_c and desc_c:
+                proto = "EVO-" + hashlib.sha256(str(datetime.now()).encode()).hexdigest()[:6].upper()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO chamados (protocolo, usuario_email, nome, categoria, assunto, descricao, prioridade, data_hora) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (proto, st.session_state["email_atual"], st.session_state["usuario_atual"], cat_c, assunto_c, desc_c, prioridade_c, datetime.now().strftime("%d/%m/%Y %H:%M"))
+                )
+                conn.commit()
+                st.success(f"Chamado aberto com sucesso! Protocolo: **{proto}**")
+            elif btn_env_chamado:
+                st.warning("Preencha o assunto e a descrição.")
+                
+        st.markdown("---")
+        st.subheader("Meus Chamados")
+        df_meus_chamados = pd.read_sql_query("SELECT protocolo, categoria, assunto, prioridade, estado, data_hora FROM chamados WHERE usuario_email = ?", conn, params=(st.session_state["email_atual"],))
+        st.dataframe(df_meus_chamados, use_container_width=True)
+
+    elif menu == "Configurações":
+        st.header("Configurações da Conta")
+        st.markdown(f"**Nome:** {st.session_state['usuario_atual']}")
+        st.markdown(f"**E-mail:** {st.session_state['email_atual']}")
+        st.markdown(f"**Nível de Acesso:** {st.session_state['nivel_acesso']}")
+
+    elif menu == "Administração" and st.session_state["nivel_acesso"] == "Administrador":
+        st.header("Painel Administrativo e Auditoria")
+        tab_users, tab_logs, tab_admin_chamados = st.tabs(["Gerir Utilizadores", "Logs do Sistema", "Gestão de Chamados"])
+        
+        with tab_users:
+            st.subheader("Utilizadores Registados")
+            df_users = pd.read_sql_query("SELECT id, nome, username, email, nivel, ativo FROM usuarios", conn)
+            st.dataframe(df_users, use_container_width=True)
+            
+        with tab_logs:
+            st.subheader("Registo de Auditoria")
+            df_logs = pd.read_sql_query("SELECT * FROM historico ORDER BY id DESC LIMIT 100", conn)
             st.dataframe(df_logs, use_container_width=True)
-        else:
-            st.info("Ainda não existem registos de auditoria.")
+            
+        with tab_admin_chamados:
+            st.subheader("Todos os Chamados de Suporte")
+            df_all_c = pd.read_sql_query("SELECT * FROM chamados", conn)
+            st.dataframe(df_all_c, use_container_width=True)
 
     conn.close()
