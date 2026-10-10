@@ -12,7 +12,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- 2. ESTILIZAÇÃO VISUAL ---
+# --- 2. ESTILIZAÇÃO VISUAL PROFISSIONAL ---
 st.markdown("""
     <style>
     .stApp {
@@ -101,7 +101,6 @@ try:
             except Exception as e:
                 print(f"Erro ao adicionar coluna {coluna} em {tabela}: {e}")
 
-    # Garantir colunas essenciais sem perder dados antigos
     garantir_coluna("clientes", "email", "TEXT")
     garantir_coluna("clientes", "telefone", "TEXT")
     garantir_coluna("clientes", "cidade", "TEXT")
@@ -300,4 +299,15 @@ else:
         
         with st.form("form_cliente"):
             c_nome = st.text_input("Nome do Cliente")
-            c_email = st.text
+            c_email = st.text_input("E-mail")
+            c_tel = st.text_input("Telefone")
+            c_cid = st.text_input("Cidade")
+            btn_add_c = st.form_submit_button("Adicionar Cliente")
+            
+            if btn_add_c and c_nome:
+                cursor = conn.cursor()
+                data_cad = datetime.now().strftime("%d/%m/%Y")
+                cursor.execute("INSERT INTO clientes (nome, email, telefone, cidade, data_cadastro) VALUES (?, ?, ?, ?, ?)",
+                               (c_nome, c_email, c_tel, c_cid, data_cad))
+                conn.commit()
+                registar_log(st.session_state["usuario_atual"], st.session_state["email_atual"], "Cliente", f"Cliente
