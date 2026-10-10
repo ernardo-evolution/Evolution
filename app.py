@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta
+import hashlib
+import hmac
+import os
 import re
 import sqlite3
-import bcrypt
 import pandas as pd
 import streamlit as st
 
@@ -57,34 +59,38 @@ st.markdown("""
 
 DB_FILE = "evolution_gestao.db"
 
-# --- 3. SEGURANÇA E BCRYPT COM SUPORTE RETROCOMPATÍVEL ---
-def gerar_hash_bcrypt(senha: str) -> str:
-    salt = bcrypt.gensalt(rounds=12)
-    return bcrypt.hashpw(senha.encode('utf-8'), salt).decode('utf-8')
+# --- 3. SEGURANÇA E HASH SEGURO (PBKDF2 NATIVO) ---
+def gerar_hash_senha(senha: str) -> str:
+    """Gera um hash seguro usando PBKDF2 com salt aleatório."""
+    salt = os.urandom(16)
+    # 100.000 iterações para máxima segurança corporativa
+    h = hashlib.pbkdf2_hmac('sha256', senha.encode('utf-8'), salt, 100000)
+    return salt.hex() + ':' + h.hex()
 
 def verificar_e_migrar_senha(senha_fornecida: str, hash_armazenado: str) -> tuple[bool, str | None]:
     """
-    Verifica se a senha coincide com o hash.
-    Suporta hashes Bcrypt ($2b$) e os legados SHA-256 (64 caract. hex).
-    Caso seja SHA-256 válido, retorna True e o novo hash Bcrypt para migração.
+    Verifica senhas no formato seguro PBKDF2 ou em SHA-256 legado,
+    migrando automaticamente contas antigas para o novo formato seguro.
     """
     if not hash_armazenado:
         return False, None
     
-    # Verificação Bcrypt moderna
-    if hash_armazenado.startswith("$2b$") or hash_armazenado.startswith("$2a$"):
+    # Formato moderno PBKDF2 (contém ':' separando o salt do hash)
+    if ':' in hash_armazenado:
         try:
-            valido = bcrypt.checkpw(senha_fornecida.encode('utf-8'), hash_armazenado.encode('utf-8'))
+            salt_hex, hash_hex = hash_armazenado.split(':')
+            salt = bytes.fromhex(salt_hex)
+            h_f = hashlib.pbkdf2_hmac('sha256', senha_fornecida.encode('utf-8'), salt, 100000)
+            valido = hmac.compare_digest(h_f.hex(), hash_hex)
             return valido, None
         except Exception:
             return False, None
 
-    # Verificação retrocompatível com hash SHA-256 legado
-    import hashlib
-    sha256_fornecido = hashlib.sha256(senha_fornecida.encode('utf-8')).hexdigest()
-    if sha256_fornecido == hash_armazenado:
-        novo_hash_bcrypt = gerar_hash_bcrypt(senha_fornecida)
-        return True, novo_hash_bcrypt
+    # Compatibilidade com SHA-256 simples legado
+    sha256_antigo = hashlib.sha256(senha_fornecida.encode('utf-8')).hexdigest()
+    if hmac.compare_digest(sha256_antigo, hash_armazenado):
+        novo_hash = gerar_hash_senha(senha_fornecida)
+        return True, novo_hash
 
     return False, None
 
@@ -101,7 +107,7 @@ def validar_email(email: str) -> bool:
     padrao = r"^[\w\.-]+@[\w\.-]+\.\w+$"
     return re.match(padrao, email) is not None
 
-# --- 4. BASE DE DADOS E MIGRAÇÕES COMPATÍVEIS ---
+# --- 4. BASE DE DADOS E MIGRAÇÕES ---
 try:
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -260,7 +266,7 @@ with st.sidebar:
     else:
         st.info("Efetue login na página principal para aceder às ferramentas.")
 
-# --- 7. FLUXO DE ENTRADA PARA UTILIZADORES EXISTENTES E NOVOS ---
+# --- 7. FLUXO DE ENTRADA ---
 if not st.session_state["autenticado"]:
     col1, col2, col3 = st.columns([1, 1.2, 1])
     
@@ -304,14 +310,12 @@ if not st.session_state["autenticado"]:
                 st.rerun()
                 
         else:
-            # Opções claras para utilizadores registados e novos
             tab_login, tab_registo, tab_ajuda = st.tabs([
                 "🔑 Já tenho uma conta (Entrar)", 
                 "📝 Ainda não tenho uma conta (Criar)", 
                 "❓ Central de Ajuda"
             ])
             
-            # --- ABA 1: LOGIN (UTILIZADORES EXISTENTES) ---
             with tab_login:
                 st.markdown("### Bem-vindo de volta")
                 st.caption("Aceda com o seu e-mail e palavra-passe cadastrados.")
@@ -344,28 +348,22 @@ if not st.session_state["autenticado"]:
                             else:
                                 u_id, u_nome, u_nivel, u_senha_hash, u_ativo, u_verificado, u_email = user_data
                                 
-                                # 1. Validar se a conta está ativa
                                 if u_ativo != 1:
                                     conn.close()
                                     registar_log(u_nome, u_email, "Login", "Tentativa em conta bloqueada/desativada", "Bloqueado")
                                     st.error("A sua conta encontra-se desativada ou bloqueada. Por favor, entre em contacto com a Central de Ajuda.")
-                                
-                                # 2. Validar confirmação de e-mail se exigido
                                 elif u_verificado != 1:
                                     conn.close()
                                     registar_log(u_nome, u_email, "Login", "Tentativa em conta pendente de confirmação", "Pendente")
-                                    st.warning("O seu e-mail ainda não foi confirmado. Por favor, verifique a sua caixa de entrada ou solicite novo código.")
-                                
+                                    st.warning("O seu e-mail ainda não foi confirmado.")
                                 else:
-                                    # 3. Validar hash e migrar SHA-256 para Bcrypt se necessário
-                                    valido, novo_bcrypt = verificar_e_migrar_senha(senha_l, u_senha_hash)
+                                    valido, novo_hash = verificar_e_migrar_senha(senha_l, u_senha_hash)
                                     
                                     if valido:
-                                        if novo_bcrypt:
-                                            # Atualização transparente da conta antiga para Bcrypt
-                                            cursor.execute("UPDATE usuarios SET senha = ? WHERE id = ?", (novo_bcrypt, u_id))
+                                        if novo_hash:
+                                            cursor.execute("UPDATE usuarios SET senha = ? WHERE id = ?", (novo_hash, u_id))
                                             conn.commit()
-                                            registar_log(u_nome, u_email, "Migração de Segurança", "Senha migrada com sucesso de SHA-256 para Bcrypt", "Sucesso")
+                                            registar_log(u_nome, u_email, "Migração de Segurança", "Senha atualizada para o formato seguro", "Sucesso")
                                         
                                         conn.close()
                                         st.session_state["autenticado"] = True
@@ -385,7 +383,6 @@ if not st.session_state["autenticado"]:
                     st.session_state["modo_recuperacao"] = True
                     st.rerun()
 
-            # --- ABA 2: CADASTRO (NOVOS UTILIZADORES) ---
             with tab_registo:
                 st.markdown("### Crie a sua conta")
                 st.caption("Cadastre-se para obter acesso à plataforma Evolution Gestão Online.")
@@ -418,23 +415,20 @@ if not st.session_state["autenticado"]:
                                 conn.close()
                                 st.error("O e-mail ou nome de utilizador já se encontra registado.")
                             else:
-                                # Garantir que o formulário de cadastro atribui o nível padrão "Funcionário"
-                                # A atribuição do primeiro Administrador ocorre apenas se a base estiver vazia
                                 cursor.execute("SELECT COUNT(*) FROM usuarios")
                                 total_u = cursor.fetchone()[0]
                                 nivel_atribuido = "Administrador" if total_u == 0 else "Funcionário"
                                 
-                                hash_bcrypt = gerar_hash_bcrypt(r_senha)
+                                hash_seguro = gerar_hash_senha(r_senha)
                                 cursor.execute(
                                     "INSERT INTO usuarios (nome, username, email, senha, nivel, ativo, email_verificado) VALUES (?, ?, ?, ?, ?, 1, 1)",
-                                    (r_nome, r_user, r_email, hash_bcrypt, nivel_atribuido)
+                                    (r_nome, r_user, r_email, hash_seguro, nivel_atribuido)
                                 )
                                 conn.commit()
                                 conn.close()
                                 registar_log(r_nome, r_email, "Registo", f"Conta criada com nível {nivel_atribuido}", "Sucesso")
                                 st.success("Conta criada com sucesso! Mude para a aba 'Já tenho uma conta' para iniciar sessão.")
 
-            # --- ABA 3: AJUDA E SUPORTE ---
             with tab_ajuda:
                 st.markdown("### Central de Ajuda")
                 st.caption("Como podemos ajudar?")
