@@ -367,4 +367,39 @@ else:
                 cursor.execute("INSERT INTO vendas (cliente, produto, quantidade, valor_total, data_venda) VALUES (?, ?, ?, ?, ?)",
                                (v_cliente, v_produto, v_qtd, total, data_v))
                 conn.commit()
-                msg_log = f"Venda de {v_qtd}x {
+                msg_log = f"Venda de {v_qtd}x {v_produto} para {v_cliente}"
+                registar_log(st.session_state["usuario_atual"], st.session_state["email_atual"], "Venda", msg_log, "Sucesso")
+                st.success(f"Venda registada com sucesso! Total: R$ {total:,.2f}")
+                st.rerun()
+                    
+        st.markdown("---")
+        st.subheader("Histórico de Vendas")
+        df_vendas_hist = pd.read_sql_query("SELECT id, cliente, produto, quantidade, valor_total, data_venda FROM vendas", conn)
+        st.dataframe(df_vendas_hist, use_container_width=True)
+
+    elif menu == "📋 Relatórios":
+        st.header("📋 Relatórios e Indicadores")
+        st.info("Aqui pode extrair o panorama completo das operações financeiras e de stock.")
+        
+        try:
+            df_v = pd.read_sql_query("SELECT * FROM vendas", conn)
+            if not df_v.empty:
+                st.subheader("Resumo Consolidado de Vendas")
+                st.dataframe(df_v, use_container_width=True)
+            else:
+                st.info("Sem dados de vendas disponíveis.")
+        except Exception as e:
+            st.error(f"Erro ao gerar relatório: {e}")
+
+    elif menu == "🛡️ Logs e Auditoria" and st.session_state["nivel_acesso"] == "Administrador":
+        st.header("🛡️ Registo de Auditoria e Segurança")
+        st.markdown("Registo detalhado de todas as atividades efetuadas no sistema (logins, criação de contas, operações e alterações).")
+        st.markdown("---")
+        
+        df_logs = pd.read_sql_query("SELECT data_hora, usuario, email, acao, detalhes, resultado FROM historico ORDER BY id DESC", conn)
+        if not df_logs.empty:
+            st.dataframe(df_logs, use_container_width=True)
+        else:
+            st.info("Ainda não existem registos de auditoria.")
+
+    conn.close()
