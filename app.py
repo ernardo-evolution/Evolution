@@ -1,9 +1,9 @@
-import streamlit as st
-import sqlite3
-import hashlib
-import pandas as pd
 from datetime import datetime, timedelta
 import re
+import sqlite3
+import bcrypt
+import pandas as pd
+import streamlit as st
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- 2. IDENTIDADE VISUAL OFICIAL (PALETA CORPORATIVA) ---
+# --- 2. IDENTIDADE VISUAL OFICIAL ---
 st.markdown("""
     <style>
     :root {
@@ -43,9 +43,8 @@ st.markdown("""
         border-right: 1px solid var(--border-color);
     }
     
-    /* Centralização e largura máxima otimizada para o Login/Registo */
     .auth-container {
-        max-width: 480px;
+        max-width: 500px;
         margin: 0 auto;
         padding: 2rem;
         background-color: var(--bg-graphite);
@@ -58,11 +57,38 @@ st.markdown("""
 
 DB_FILE = "evolution_gestao.db"
 
-# --- 3. FUNÇÕES DE SEGURANÇA E VALIDAÇÃO ---
-def gerar_hash_senha(senha):
-    return hashlib.sha256(senha.encode('utf-8')).hexdigest()
+# --- 3. SEGURANÇA E BCRYPT COM SUPORTE RETROCOMPATÍVEL ---
+def gerar_hash_bcrypt(senha: str) -> str:
+    salt = bcrypt.gensalt(rounds=12)
+    return bcrypt.hashpw(senha.encode('utf-8'), salt).decode('utf-8')
 
-def validar_forca_senha(senha):
+def verificar_e_migrar_senha(senha_fornecida: str, hash_armazenado: str) -> tuple[bool, str | None]:
+    """
+    Verifica se a senha coincide com o hash.
+    Suporta hashes Bcrypt ($2b$) e os legados SHA-256 (64 caract. hex).
+    Caso seja SHA-256 válido, retorna True e o novo hash Bcrypt para migração.
+    """
+    if not hash_armazenado:
+        return False, None
+    
+    # Verificação Bcrypt moderna
+    if hash_armazenado.startswith("$2b$") or hash_armazenado.startswith("$2a$"):
+        try:
+            valido = bcrypt.checkpw(senha_fornecida.encode('utf-8'), hash_armazenado.encode('utf-8'))
+            return valido, None
+        except Exception:
+            return False, None
+
+    # Verificação retrocompatível com hash SHA-256 legado
+    import hashlib
+    sha256_fornecido = hashlib.sha256(senha_fornecida.encode('utf-8')).hexdigest()
+    if sha256_fornecido == hash_armazenado:
+        novo_hash_bcrypt = gerar_hash_bcrypt(senha_fornecida)
+        return True, novo_hash_bcrypt
+
+    return False, None
+
+def validar_forca_senha(senha: str) -> str | None:
     if len(senha) < 8:
         return "A palavra-passe deve ter pelo menos 8 caracteres."
     if not re.search(r"[a-z]", senha):
@@ -71,11 +97,11 @@ def validar_forca_senha(senha):
         return "A palavra-passe deve conter pelo menos um número."
     return None
 
-def validar_email(email):
+def validar_email(email: str) -> bool:
     padrao = r"^[\w\.-]+@[\w\.-]+\.\w+$"
     return re.match(padrao, email) is not None
 
-# --- 4. INICIALIZAÇÃO DA BASE DE DADOS E MIGRAÇÕES ---
+# --- 4. BASE DE DADOS E MIGRAÇÕES COMPATÍVEIS ---
 try:
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -89,7 +115,7 @@ try:
             senha TEXT,
             nivel TEXT DEFAULT 'Funcionário',
             ativo INTEGER DEFAULT 1,
-            email_verificado INTEGER DEFAULT 0,
+            email_verificado INTEGER DEFAULT 1,
             codigo_verificacao TEXT,
             token_recuperacao TEXT,
             token_expiracao TEXT
@@ -156,7 +182,6 @@ try:
     
     conn.commit()
 
-    # Garantir colunas essenciais
     def garantir_coluna(tabela, coluna, definicao):
         cursor.execute(f"PRAGMA table_info({tabela})")
         colunas = [col[1] for col in cursor.fetchall()]
@@ -164,7 +189,7 @@ try:
             cursor.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {definicao}")
             conn.commit()
 
-    garantir_coluna("usuarios", "email_verificado", "INTEGER DEFAULT 0")
+    garantir_coluna("usuarios", "email_verificado", "INTEGER DEFAULT 1")
     garantir_coluna("usuarios", "codigo_verificacao", "TEXT")
     garantir_coluna("usuarios", "token_recuperacao", "TEXT")
     garantir_coluna("usuarios", "token_expiracao", "TEXT")
@@ -187,7 +212,7 @@ def registar_log(usuario, email, acao, detalhes, resultado):
     except Exception as ex:
         print(f"Erro ao registar log: {ex}")
 
-# --- 5. GESTÃO DE SESSÃO ---
+# --- 5. SESSÃO E ESTADO DA APLICAÇÃO ---
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 if "usuario_atual" not in st.session_state:
@@ -200,23 +225,6 @@ if "email_input" not in st.session_state:
     st.session_state["email_input"] = ""
 if "modo_recuperacao" not in st.session_state:
     st.session_state["modo_recuperacao"] = False
-
-# Persistência segura controlada por sessão
-try:
-    if not st.session_state["autenticado"] and "email_sessao" in st.session_state:
-        email_p = st.session_state["email_sessao"]
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("SELECT nome, nivel, email, ativo FROM usuarios WHERE email = ?", (email_p,))
-        u_pers = cursor.fetchone()
-        conn.close()
-        if u_pers and u_pers[3] == 1:
-            st.session_state["autenticado"] = True
-            st.session_state["usuario_atual"] = u_pers[0]
-            st.session_state["nivel_acesso"] = u_pers[1]
-            st.session_state["email_atual"] = u_pers[2]
-except Exception as ex:
-    print(f"Erro na persistência de sessão: {ex}")
 
 # --- 6. BARRA LATERAL E NAVEGAÇÃO ---
 menu = "Visão geral"
@@ -247,26 +255,25 @@ with st.sidebar:
             st.session_state["usuario_atual"] = ""
             st.session_state["email_atual"] = ""
             st.session_state["nivel_acesso"] = ""
-            if "email_sessao" in st.session_state:
-                del st.session_state["email_sessao"]
             st.success("Sessão encerrada com sucesso.")
             st.rerun()
     else:
-        st.info("Acesse a plataforma para visualizar os menus operacionais.")
+        st.info("Efetue login na página principal para aceder às ferramentas.")
 
-# --- 7. FLUXO DE AUTENTICAÇÃO E REGISTO ---
+# --- 7. FLUXO DE ENTRADA PARA UTILIZADORES EXISTENTES E NOVOS ---
 if not st.session_state["autenticado"]:
     col1, col2, col3 = st.columns([1, 1.2, 1])
     
     with col2:
-        st.markdown("<div style='text-align: center; padding-top: 1rem;'>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
         st.markdown("## ⚡ EVOLUTION")
         st.caption("GESTÃO ONLINE")
         st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
         
         if st.session_state["modo_recuperacao"]:
             st.markdown("### Recuperação de Acesso")
-            st.caption("Informe seu e-mail corporativo para receber as instruções.")
+            st.caption("Informe o seu e-mail corporativo cadastrado para iniciar a recuperação.")
             
             with st.form("form_recuperacao"):
                 email_rec = st.text_input("E-mail corporativo", placeholder="nome@empresa.com").strip().lower()
@@ -278,36 +285,40 @@ if not st.session_state["autenticado"]:
                         cursor = conn.cursor()
                         cursor.execute("SELECT id FROM usuarios WHERE email = ?", (email_rec,))
                         existe = cursor.fetchone()
-                        conn.close()
                         
                         if existe:
-                            token_seguro = hashlib.sha256(str(datetime.now()).encode()).hexdigest()[:12]
+                            import secrets
+                            token_seguro = secrets.token_hex(16)
                             exp = datetime.now() + timedelta(hours=1)
-                            conn = sqlite3.connect(DB_FILE)
-                            cursor = conn.cursor()
                             cursor.execute("UPDATE usuarios SET token_recuperacao = ?, token_expiracao = ? WHERE email = ?", (token_seguro, str(exp), email_rec))
                             conn.commit()
-                            conn.close()
                             registar_log("Sistema", email_rec, "Recuperação de Senha", "Token de recuperação gerado", "Sucesso")
+                        conn.close()
                         
                         st.success("Se existir uma conta elegível para este endereço, enviaremos as instruções de recuperação.")
                     else:
                         st.error("Formato de e-mail inválido.")
             
-            if st.button("Voltar ao login"):
+            if st.button("Voltar ao Login", use_container_width=True):
                 st.session_state["modo_recuperacao"] = False
                 st.rerun()
                 
         else:
-            tab_login, tab_registo, tab_ajuda = st.tabs(["Entrar", "Criar conta", "Ajuda"])
+            # Opções claras para utilizadores registados e novos
+            tab_login, tab_registo, tab_ajuda = st.tabs([
+                "🔑 Já tenho uma conta (Entrar)", 
+                "📝 Ainda não tenho uma conta (Criar)", 
+                "❓ Central de Ajuda"
+            ])
             
+            # --- ABA 1: LOGIN (UTILIZADORES EXISTENTES) ---
             with tab_login:
                 st.markdown("### Bem-vindo de volta")
-                st.caption("Acesse sua conta para continuar na plataforma.")
+                st.caption("Aceda com o seu e-mail e palavra-passe cadastrados.")
                 
                 with st.form("form_login_principal"):
                     email_l = st.text_input("E-mail corporativo", placeholder="nome@empresa.com", value=st.session_state["email_input"]).strip().lower()
-                    senha_l = st.text_input("Palavra-passe", type="password", placeholder="Digite sua palavra-passe")
+                    senha_l = st.text_input("Palavra-passe", type="password", placeholder="Digite a sua palavra-passe")
                     lembrar_me = st.checkbox("Lembrar de mim neste dispositivo")
                     btn_entrar = st.form_submit_button("Entrar na plataforma", use_container_width=True)
                     
@@ -320,39 +331,70 @@ if not st.session_state["autenticado"]:
                         else:
                             conn = sqlite3.connect(DB_FILE)
                             cursor = conn.cursor()
-                            cursor.execute("SELECT nome, nivel, senha, ativo, email FROM usuarios WHERE email = ?", (email_l,))
+                            cursor.execute(
+                                "SELECT id, nome, nivel, senha, ativo, email_verificado, email FROM usuarios WHERE email = ?", 
+                                (email_l,)
+                            )
                             user_data = cursor.fetchone()
-                            conn.close()
                             
-                            if user_data and user_data[3] == 1 and user_data[2] == gerar_hash_senha(senha_l):
-                                st.session_state["autenticado"] = True
-                                st.session_state["usuario_atual"] = user_data[0]
-                                st.session_state["nivel_acesso"] = user_data[1]
-                                st.session_state["email_atual"] = user_data[4]
-                                
-                                if lembrar_me:
-                                    st.session_state["email_sessao"] = user_data[4]
-                                    
-                                registar_log(user_data[0], user_data[4], "Login", "Autenticação bem-sucedida", "Sucesso")
-                                st.success("Sessão iniciada com sucesso!")
-                                st.rerun()
+                            if not user_data:
+                                conn.close()
+                                registar_log("Anónimo", email_l, "Login", "Tentativa de acesso com e-mail não cadastrado", "Falha")
+                                st.error("Não foi possível entrar. Verifique os seus dados e tente novamente.")
                             else:
-                                registar_log("Anónimo", email_l, "Login", "Tentativa de acesso inválida ou conta inativa", "Falha")
-                                st.error("Não foi possível entrar. Verifique seus dados e tente novamente.")
+                                u_id, u_nome, u_nivel, u_senha_hash, u_ativo, u_verificado, u_email = user_data
+                                
+                                # 1. Validar se a conta está ativa
+                                if u_ativo != 1:
+                                    conn.close()
+                                    registar_log(u_nome, u_email, "Login", "Tentativa em conta bloqueada/desativada", "Bloqueado")
+                                    st.error("A sua conta encontra-se desativada ou bloqueada. Por favor, entre em contacto com a Central de Ajuda.")
+                                
+                                # 2. Validar confirmação de e-mail se exigido
+                                elif u_verificado != 1:
+                                    conn.close()
+                                    registar_log(u_nome, u_email, "Login", "Tentativa em conta pendente de confirmação", "Pendente")
+                                    st.warning("O seu e-mail ainda não foi confirmado. Por favor, verifique a sua caixa de entrada ou solicite novo código.")
+                                
+                                else:
+                                    # 3. Validar hash e migrar SHA-256 para Bcrypt se necessário
+                                    valido, novo_bcrypt = verificar_e_migrar_senha(senha_l, u_senha_hash)
+                                    
+                                    if valido:
+                                        if novo_bcrypt:
+                                            # Atualização transparente da conta antiga para Bcrypt
+                                            cursor.execute("UPDATE usuarios SET senha = ? WHERE id = ?", (novo_bcrypt, u_id))
+                                            conn.commit()
+                                            registar_log(u_nome, u_email, "Migração de Segurança", "Senha migrada com sucesso de SHA-256 para Bcrypt", "Sucesso")
+                                        
+                                        conn.close()
+                                        st.session_state["autenticado"] = True
+                                        st.session_state["usuario_atual"] = u_nome
+                                        st.session_state["nivel_acesso"] = u_nivel
+                                        st.session_state["email_atual"] = u_email
+                                        
+                                        registar_log(u_nome, u_email, "Login", "Autenticação bem-sucedida", "Sucesso")
+                                        st.success("Sessão iniciada com sucesso!")
+                                        st.rerun()
+                                    else:
+                                        conn.close()
+                                        registar_log(u_nome, u_email, "Login", "Palavra-passe incorreta", "Falha")
+                                        st.error("Não foi possível entrar. Verifique os seus dados e tente novamente.")
                 
-                if st.button("Esqueci minha senha", type="tertiary"):
+                if st.button("Esqueci a minha palavra-passe", type="tertiary"):
                     st.session_state["modo_recuperacao"] = True
                     st.rerun()
 
+            # --- ABA 2: CADASTRO (NOVOS UTILIZADORES) ---
             with tab_registo:
-                st.markdown("### Crie sua conta")
-                st.caption("Cadastre-se para acessar a plataforma Evolution Gestão Online.")
+                st.markdown("### Crie a sua conta")
+                st.caption("Cadastre-se para obter acesso à plataforma Evolution Gestão Online.")
                 
                 with st.form("form_registo_principal"):
                     r_nome = st.text_input("Nome completo")
-                    r_user = st.text_input("Nome de usuário")
-                    r_email = st.text_input("E-mail", placeholder="nome@empresa.com").strip().lower()
-                    r_senha = st.text_input("Palavra-passe", type="password", placeholder="Mínimo 8 caracteres, com letra e número")
+                    r_user = st.text_input("Nome de utilizador (Username)")
+                    r_email = st.text_input("E-mail corporativo", placeholder="nome@empresa.com").strip().lower()
+                    r_senha = st.text_input("Palavra-passe", type="password", placeholder="Mín. 8 caracteres, com letra e número")
                     r_conf = st.text_input("Confirmar palavra-passe", type="password")
                     btn_cadastrar = st.form_submit_button("Criar conta", use_container_width=True)
                     
@@ -374,55 +416,60 @@ if not st.session_state["autenticado"]:
                             
                             if duplicado:
                                 conn.close()
-                                st.error("E-mail ou nome de usuário já registados.")
+                                st.error("O e-mail ou nome de utilizador já se encontra registado.")
                             else:
-                                # Verificar se é o primeiro usuário para torná-lo Administrador
+                                # Garantir que o formulário de cadastro atribui o nível padrão "Funcionário"
+                                # A atribuição do primeiro Administrador ocorre apenas se a base estiver vazia
                                 cursor.execute("SELECT COUNT(*) FROM usuarios")
                                 total_u = cursor.fetchone()[0]
                                 nivel_atribuido = "Administrador" if total_u == 0 else "Funcionário"
                                 
+                                hash_bcrypt = gerar_hash_bcrypt(r_senha)
                                 cursor.execute(
                                     "INSERT INTO usuarios (nome, username, email, senha, nivel, ativo, email_verificado) VALUES (?, ?, ?, ?, ?, 1, 1)",
-                                    (r_nome, r_user, r_email, gerar_hash_senha(r_senha), nivel_atribuido)
+                                    (r_nome, r_user, r_email, hash_bcrypt, nivel_atribuido)
                                 )
                                 conn.commit()
                                 conn.close()
                                 registar_log(r_nome, r_email, "Registo", f"Conta criada com nível {nivel_atribuido}", "Sucesso")
-                                st.success("Conta criada com sucesso! Já pode efetuar login na aba anterior.")
+                                st.success("Conta criada com sucesso! Mude para a aba 'Já tenho uma conta' para iniciar sessão.")
 
+            # --- ABA 3: AJUDA E SUPORTE ---
             with tab_ajuda:
-                st.markdown("### Ajuda e Suporte")
+                st.markdown("### Central de Ajuda")
                 st.caption("Como podemos ajudar?")
+                
                 pesquisa_ajuda = st.text_input("Pesquise uma dúvida...", placeholder="Ex: login, senha, relatórios")
                 
                 st.markdown("**Perguntas Frequentes:**")
-                st.markdown("- **Como faço login?** Utilize seu e-mail corporativo e palavra-passe na aba 'Entrar'.")
-                st.markdown("- **Esqueci minha senha:** Clique em 'Esqueci minha senha' para iniciar a recuperação.")
-                st.markdown("- **Problemas de acesso?** Contacte o administrador do sistema.")
+                st.markdown("- **Já tenho conta, como entro?** Selecione a aba 'Já tenho uma conta', digite o seu e-mail e palavra-passe.")
+                st.markdown("- **Esqueci a minha senha:** Clique no link 'Esqueci a minha palavra-passe' no formulário de login.")
+                st.markdown("- **Conta desativada:** Entre em contacto através do formulário abaixo para solicitar suporte.")
                 
                 st.markdown("---")
                 st.markdown("#### Abrir Chamado de Suporte")
                 with st.form("form_suporte_publico"):
-                    s_nome = st.text_input("Seu nome")
-                    s_email = st.text_input("Seu e-mail")
-                    s_cat = st.selectbox("Categoria", ["Acesso à conta", "Problemas técnicos", "Outras dúvidas"])
+                    s_nome = st.text_input("O seu nome")
+                    s_email = st.text_input("O seu e-mail")
+                    s_cat = st.selectbox("Categoria", ["Acesso à conta", "Conta bloqueada", "Problemas técnicos", "Outras dúvidas"])
                     s_desc = st.text_area("Descrição detalhada do problema")
                     btn_chamado = st.form_submit_button("Enviar solicitação")
                     
                     if btn_chamado:
                         if s_nome and s_email and s_desc:
-                            proto = "EVO-" + hashlib.sha256(str(datetime.now()).encode()).hexdigest()[:6].upper()
+                            import secrets
+                            proto = "EVO-" + secrets.token_hex(4).upper()
                             conn = sqlite3.connect(DB_FILE)
                             cursor = conn.cursor()
                             cursor.execute(
                                 "INSERT INTO chamados (protocolo, usuario_email, nome, categoria, assunto, descricao, prioridade, data_hora) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                                (proto, s_email, s_nome, s_cat, "Suporte Público", s_desc, "Normal", datetime.now().strftime("%d/%m/%Y %H:%M"))
+                                (proto, s_email, s_nome, s_cat, "Atendimento Público", s_desc, "Normal", datetime.now().strftime("%d/%m/%Y %H:%M"))
                             )
                             conn.commit()
                             conn.close()
                             st.success(f"Solicitação registada com sucesso! Guarde o protocolo: **{proto}**")
                         else:
-                            st.warning("Preencha todos os campos para abrir o chamado.")
+                            st.warning("Preencha todos os campos obrigatórios para abrir o chamado.")
 
 # --- 8. PAINEL PRINCIPAL E MÓDULOS OPERACIONAIS ---
 else:
@@ -558,8 +605,6 @@ else:
 
     elif menu == "Ajuda e Suporte":
         st.header("Central de Ajuda e Suporte")
-        termo_pesquisa = st.text_input("Pesquise na Central de Ajuda...")
-        
         st.markdown("---")
         st.subheader("Abrir Novo Chamado")
         with st.form("form_chamado_interno"):
@@ -570,7 +615,8 @@ else:
             btn_env_chamado = st.form_submit_button("Enviar solicitação")
             
             if btn_env_chamado and assunto_c and desc_c:
-                proto = "EVO-" + hashlib.sha256(str(datetime.now()).encode()).hexdigest()[:6].upper()
+                import secrets
+                proto = "EVO-" + secrets.token_hex(4).upper()
                 cursor = conn.cursor()
                 cursor.execute(
                     "INSERT INTO chamados (protocolo, usuario_email, nome, categoria, assunto, descricao, prioridade, data_hora) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -598,7 +644,7 @@ else:
         
         with tab_users:
             st.subheader("Utilizadores Registados")
-            df_users = pd.read_sql_query("SELECT id, nome, username, email, nivel, ativo FROM usuarios", conn)
+            df_users = pd.read_sql_query("SELECT id, nome, username, email, nivel, ativo, email_verificado FROM usuarios", conn)
             st.dataframe(df_users, use_container_width=True)
             
         with tab_logs:
